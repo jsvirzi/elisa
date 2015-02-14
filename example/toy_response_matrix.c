@@ -9,7 +9,7 @@
 bool debug = false, verbose = false;
 
 int main(int argc, char **argv) {
-	int nevts = 10000000, seed = 4357;
+	int nevts = 1000000000, seed = 4357;
 	char str[1024];
 
 /* X distribution parameters */

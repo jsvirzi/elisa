@@ -6,9 +6,8 @@ SYSLIBS = -lg2c -lm -ldl
 INCLUDES = $(ROOTINCS) $(UNFOLDINCS)
 LIBS = $(ROOTLIBS)
 
-all : lib/libUnfold.so 
-# lib/libResponseMatrix.so 
-# example/make_response_matrix example/unfold example/toy_response_matrix example/toy_response_matrix_2d example/elisa example/ml example/bayes bin/analyze_bias bin/poisson_extractions
+all : lib/libUnfold.so lib/libResponseMatrix.so example/toy_response_matrix
+# example/unfold example/elisa example/ml example/bayes bin/analyze_bias bin/poisson_extractions
 
 CFLAGS = -fPIC -Wall -c -g $(shell root-config --cflags) 
 LFLAGS = 
@@ -37,14 +36,8 @@ example/elisa : example/elisa.c include/unfold.h include/response_matrix.h
 example/bayes : example/bayes.c include/unfold.h include/response_matrix.h
 	g++ example/bayes.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/bayes
 
-example/make_response_matrix : example/make_response_matrix.c include/response_matrix.h
-	g++ example/make_response_matrix.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/make_response_matrix
-
 example/toy_response_matrix : example/toy_response_matrix.c include/response_matrix.h
 	g++ example/toy_response_matrix.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/toy_response_matrix
-
-example/toy_response_matrix_2d : example/toy_response_matrix_2d.c include/response_matrix.h
-	g++ example/toy_response_matrix_2d.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/toy_response_matrix_2d
 
 bin/bayes : src/bayes.c 
 	g++ src/bayes.c -g -O2 $(INCLUDES) $(LIBS) -o bin/bayes
@@ -67,12 +60,10 @@ lib/libResponseMatrix.so : bin/response_matrix.o
 clean:
 	rm -f lib/libUnfold.so
 	rm -f lib/libResponseMatrix.so
-	rm -f example/make_response_matrix
 	rm -f example/toy_response_matrix
-	rm -f example/toy_response_matrix_2d
-	rm -f example/unfold
-	rm -f example/ml
-	rm -f example/elisa
-	rm -f example/bayes
+	# rm -f example/unfold
+	# rm -f example/ml
+	# rm -f example/elisa
+	# rm -f example/bayes
 	rm -f bin/unfold.o
 	rm -f bin/response_matrix.o
