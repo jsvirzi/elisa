@@ -28,9 +28,10 @@ class ResponseMatrix {
 	bool finalize(std::string &ofile);
 	bool set_weight(double weight);
 	bool set_output_file(const char *file);
-	bool enable_overflow(bool flag = true) { overflow = flag; return true; };
+	bool enable_overflow(bool flag = true) { ov = flag; return true; };
+	bool enable_underflow(bool flag = true) { uf = flag; return true; };
 	protected:
-	bool overflow;
+	bool verbose, debug, ov, uf;
 	TH1D *h_x_true, *h_x_meas;
 	TH2D *h_x_y_true, *h_x_y_meas;
 	TH3D *h_x_y_z_true, *h_x_y_z_meas;
