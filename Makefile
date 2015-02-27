@@ -6,8 +6,8 @@ SYSLIBS = -lg2c -lm -ldl
 INCLUDES = $(ROOTINCS) $(UNFOLDINCS)
 LIBS = $(ROOTLIBS)
 
-all : lib/libUnfold.so lib/libResponseMatrix.so example/toy_response_matrix
-# example/unfold example/elisa example/ml example/bayes bin/analyze_bias bin/poisson_extractions
+all : lib/libUnfold.so lib/libResponseMatrix.so example/toy_response_matrix example/elisa example/perform_measurement
+# example/unfold example/ml example/bayes bin/analyze_bias bin/poisson_extractions
 
 CFLAGS = -fPIC -Wall -c -g $(shell root-config --cflags) 
 LFLAGS = 
@@ -29,6 +29,9 @@ example/unfold : example/unfold.c include/unfold.h include/response_matrix.h
 
 example/ml : example/ml.c include/unfold.h include/response_matrix.h
 	g++ example/ml.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/ml
+
+example/perform_measurement : example/perform_measurement.c include/unfold.h include/response_matrix.h
+	g++ example/perform_measurement.c -g -O2 $(ROOTINCS) $(ROOTLIBS) -o example/perform_measurement
 
 example/elisa : example/elisa.c include/unfold.h include/response_matrix.h
 	g++ example/elisa.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/elisa
