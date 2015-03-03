@@ -51,6 +51,10 @@ class Unfold {
 	bool get_maximum_likelihood_solution(double *y);
 	bool get_maximum_likelihood_solution(double *y, double *n);
 	bool bootstrap(double *n = 0);
+	double *get_true();
+	double *get_meas();
+	int get_n_true() { return nt; };
+	int get_n_meas() { return nr; };
 
 	private:
 

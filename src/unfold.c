@@ -91,11 +91,14 @@ Unfold::~Unfold() {
 bool Unfold::add_response_matrix(const char *file, const char *name, double weight) {
 	TFile fp(file, "read");
 
+printf("jsv here we are 1 %s %d\n", name, n_response);
+
 	if(n_response == 0) {
 		sprintf(str, "response_%s", name);
 		response = (TH2D *)fp.Get(str);
 		response->Scale(weight);
 		response->SetDirectory(0);
+printf("we are so good\n");
 	} else {
 		sprintf(str, "response_%s", name);
 		TH2D *h = (TH2D *)fp.Get(str);
@@ -192,7 +195,7 @@ printf("jsv. nt = %d. nr = %d\n", nt, nr);
 	} else if(dimensions_true == 3) {
 		nt_expected = (nbinsx_true + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_true + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsz_true + ((ov ? 1 : 0) + (uf ? 1 : 0)));
 	}
-	if(nt != nt_expected) { printf("mismatch in expected bins for TRUE\n"); return false; }
+	if(nt != nt_expected) { printf("mismatch in expected(%d) bins for TRUE(%d)\n", nt_expected, nt); return false; }
 
 	int nr_expected = 0;
 	if(dimensions_meas == 1) {
@@ -202,7 +205,7 @@ printf("jsv. nt = %d. nr = %d\n", nt, nr);
 	} else if(dimensions_meas == 3) {
 		nr_expected = (nbinsx_meas + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_meas + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsz_meas + ((ov ? 1 : 0) + (uf ? 1 : 0)));
 	}
-	if(nr != nr_expected) { printf("mismatch in expected bins for RECO\n"); return false; }
+	if(nr != nr_expected) { printf("mismatch in expected(%d) bins for RECO(%d)\n", nr_expected, nr); return false; }
 
 printf("jsv. expected %d %d\n", nt_expected, nr_expected);
 
@@ -373,6 +376,10 @@ bool Unfold::cleanup() {
 
 }
 
+double *Unfold::get_true() {
+	return y;
+}
+
 bool Unfold::set_true(TH1D *h) {
 	sprintf(str, "true_%s", str);
 	h_x_true = new TH1D(*h);
@@ -408,20 +415,37 @@ bool Unfold::set_true(double *y, int N) {
 }
 
 bool Unfold::set_true(const char *file, const char *name) {
+	TFile fp(file, "read");
+	sprintf(str, "dimensions_%s", name);
+	TH2D *h_dim = (TH2D *)fp.Get(str);
+	if(dimensions_true == 0) {
+		dimensions_true = h_dim->GetNbinsX();
+		printf("dimensions of response matrix (TRUE=%d. MEAS=%d)\n", dimensions_true, dimensions_meas);
+	} else {
+		int dimensions_true = h_dim->GetNbinsX();
+		if(this->dimensions_true != dimensions_true) {
+			printf("inconsistency in response matrix dimensions for TRUE (%d vs %d)\n", 
+				this->dimensions_true, dimensions_true);
+			return false;
+		}
+	}
 
 	if(dimensions_true == 1) {
 		TFile fp(file, "read");
 		TH1D *h = (TH1D *)fp.Get(name); 
-		int nx = h->GetNbinsX();
-		if(nx != nbinsx_true) { 
-			printf("mismatch in number of true bins. expected %d. found %d\n", nbinsx_true, nx);
+		nbinsx_true = h->GetNbinsX();
+		if(nbinsx_true != nt) { 
+			printf("mismatch in number of true bins. expected (%d X %d). found (%d X %d)\n", 
+				nbinsx_true, nt);
 			return false;
 		}
 		return set_true(h);
+#if 0
 	} else if(dimensions_true == 2) {
 		TFile fp(file, "read");
 		TH2D *h = (TH2D *)fp.Get(name); 
-		int nx = h->GetNbinsX(), ny = h->GetNbinsY();
+		nbinsx_true = h->GetNbinsX();
+		nbinsy_true = h->GetNbinsY();
 		if((nbinsx_true != nx) || (nbinsy_true != ny)) { 
 			printf("mismatch in number of true bins. expected (%d X %d). found (%d X %d)\n", 
 				nbinsx_true, nbinsy_true, nx, ny);
@@ -438,9 +462,14 @@ bool Unfold::set_true(const char *file, const char *name) {
 			return false;
 		}
 		return set_true(h);
+#endif
 	}
 
 	return false;
+}
+
+double *Unfold::get_meas() {
+	return n;
 }
 
 bool Unfold::set_meas(double *n, int N) {
@@ -487,6 +516,20 @@ bool Unfold::set_meas(TH3D *h) {
 }
 
 bool Unfold::set_meas(const char *file, const char *name) {
+	TFile fp(file, "read");
+	sprintf(str, "dimensions_%s", name);
+	TH2D *h_dim = (TH2D *)fp.Get(str);
+	if(dimensions_meas == 0) {
+		dimensions_meas = h_dim->GetNbinsY();
+		printf("dimensions of response matrix (TRUE=%d. MEAS=%d)\n", dimensions_true, dimensions_meas);
+	} else {
+		int dimensions_meas = h_dim->GetNbinsY();
+		if(this->dimensions_meas != dimensions_meas) {
+			printf("inconsistency in response matrix dimensions for MEAS (%d vs %d)\n", 
+				this->dimensions_meas, dimensions_meas);
+			return false;
+		}
+	}
 
 	if(dimensions_meas == 1) {
 		TFile fp(file, "read");

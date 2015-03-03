@@ -11,12 +11,17 @@ int main(int argc, char **argv) {
 	double epsilon = 0.001;
 	bool cov = false, bootstrap = false;
 
+/* defaults */
+	rfile = "example/response_matrix.root";
+	rname = "x";
+	name = "unfold"; 
+
 	for(int i=1;i<argc;++i) {
 		if(strcmp("-debug", argv[i]) == 0) { debug = true;
 		} else if(strcmp("-verbose", argv[i]) == 0) { verbose = true;
 		} else if(strcmp("-r", argv[i]) == 0) { rfile = argv[++i]; rname = argv[++i]; /* response matrix */
-		} else if(strcmp("-d", argv[i]) == 0) { dfile = argv[++i]; dname = argv[++i]; /* the data */
-		} else if(strcmp("-t", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; /* truth */
+		} else if(strcmp("-meas", argv[i]) == 0) { dfile = argv[++i]; dname = argv[++i]; /* the data */
+		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; /* truth */
 		} else if(strcmp("-trials", argv[i]) == 0) { max_trials = atoi(argv[++i]); 
 		} else if(strcmp("-stat", argv[i]) == 0) { nstat = atoi(argv[++i]); 
 		} else if(strcmp("-seed", argv[i]) == 0) { seed = atoi(argv[++i]); 
@@ -32,7 +37,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	printf("unfolding [%s]\n", name.c_str());
+	printf("unfolding [%s]\n", dname.c_str());
 	printf("convergence criteria = %f\n", epsilon);
 	// getchar();
 
@@ -40,6 +45,15 @@ int main(int argc, char **argv) {
 	if(seed) unfold->set_seed(seed);
 	unfold->initialize_response_matrix(rfile.c_str(), rname.c_str());
 	unfold->set_meas(dfile.c_str(), dname.c_str());
+	int i, j, k, nt = unfold->get_n_true(), nr = unfold->get_n_meas();
+	double *n = unfold->get_meas();
+	double *y = unfold->get_true();
+	for(i=0;i<nr;++i) {
+		printf("MEASURED(%d) = %f\n", i, n[i]);
+	}
+
+return 0;
+
 	if(bootstrap) unfold->bootstrap();
 	// unfold->set_output_file(ofile.c_str());
 	// unfold->set_epsilon(epsilon);
