@@ -7,7 +7,7 @@ bool debug = false, verbose = false;
 int main(int argc, char **argv) {
 
 	std::string name, dfile, dname, rfile, rname, tfile, tname, ofile;
-	int nstat = 0, seed = 0, max_trials = 0;
+	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0;
 	double epsilon = 0.001;
 	bool cov = false, bootstrap = false;
 
@@ -15,6 +15,13 @@ int main(int argc, char **argv) {
 	rfile = "example/response_matrix.root";
 	rname = "x";
 	name = "unfold"; 
+	dfile = "example/measurement_1.root";
+	dname = "meas_x";
+	tfile = "example/measurement_1.root";
+	tname = "true_x";
+
+	algorithm = Unfold::MaximumLikelihood;
+	// algorithm = -1;
 
 	for(int i=1;i<argc;++i) {
 		if(strcmp("-debug", argv[i]) == 0) { debug = true;
@@ -25,6 +32,7 @@ int main(int argc, char **argv) {
 		} else if(strcmp("-trials", argv[i]) == 0) { max_trials = atoi(argv[++i]); 
 		} else if(strcmp("-stat", argv[i]) == 0) { nstat = atoi(argv[++i]); 
 		} else if(strcmp("-seed", argv[i]) == 0) { seed = atoi(argv[++i]); 
+		} else if(strcmp("-algorithm", argv[i]) == 0) { algorithm = atoi(argv[++i]); 
 		} else if(strcmp("-o", argv[i]) == 0) { ofile = argv[++i];
 		} else if(strcmp("-name", argv[i]) == 0) { name = argv[++i];
 		} else if(strcmp("-bootstrap", argv[i]) == 0) { bootstrap = true;
@@ -41,27 +49,39 @@ int main(int argc, char **argv) {
 	printf("convergence criteria = %f\n", epsilon);
 	// getchar();
 
-	Unfold *unfold = new Unfold(Unfold::Elisa, name.c_str());
+	Unfold *unfold = 0;
+	if(algorithm < 0) { unfold = new Unfold(Unfold::Elisa, name.c_str()); } 
+	else { unfold = new Unfold(algorithm, name.c_str()); }
 	if(seed) unfold->set_seed(seed);
 	unfold->initialize_response_matrix(rfile.c_str(), rname.c_str());
 	unfold->set_meas(dfile.c_str(), dname.c_str());
 	int i, j, k, nt = unfold->get_n_true(), nr = unfold->get_n_meas();
+	if(bootstrap) unfold->bootstrap(); /* create new sample bootstrapped from input sample */
+	if(tname.length()) unfold->set_true(tfile.c_str(), tname.c_str());
 	double *n = unfold->get_meas();
 	double *y = unfold->get_true();
-	for(i=0;i<nr;++i) {
-		printf("MEASURED(%d) = %f\n", i, n[i]);
-	}
+	for(i=0;i<nr;++i) { printf("MEAS(%d) = %f. TRUE = %f\n", i, n[i], y[i]); }
 
-return 0;
-
-	if(bootstrap) unfold->bootstrap();
 	// unfold->set_output_file(ofile.c_str());
 	// unfold->set_epsilon(epsilon);
 	// unfold->enable_autosave();
 	// if(max_trials) unfold->set_max_trials(max_trials);
-	if(tname.length()) unfold->set_true(tfile.c_str(), tname.c_str());
 
 	unfold->run();
+
+	for(i=0;i<nr;++i) { printf("UNFOLDED(%d) = %f\n", i, y[i]); }
+
+	double **R = unfold->get_response_matrix();
+
+	for(int j=0;j<nr;++j) {
+		double acc = 0.0;
+		for(int i=0;i<nt;++i) {
+			acc += y[i] * R[i][j];
+		}
+		printf("blah(%d) = %f\n", j, acc);
+	}
+
+return 0;
 
 #if 0
 
@@ -100,6 +120,7 @@ return 0;
 
 #endif
 
+	delete unfold;
 	return 0;
 
 #if 0

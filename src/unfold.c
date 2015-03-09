@@ -33,7 +33,7 @@ static bool find_inverse(double **A, double **Ainv, int n) {
 	}
 #endif
 #if 1 
-	printf("A=\n");
+	printf("matrix to invert: A=\n");
 	for(i=0;i<n;++i) {
 		printf("ROW(%2d) ", i);
 		for(j=0;j<n;++j) {
@@ -43,6 +43,7 @@ static bool find_inverse(double **A, double **Ainv, int n) {
 	}
 #endif
 #if 1 
+	printf("A * A^{-1} = \n");
 	for(i=0;i<n;++i) {
 		printf("ROW(%2d) ", i);
 		for(j=0;j<n;++j) {
@@ -57,7 +58,9 @@ static bool find_inverse(double **A, double **Ainv, int n) {
 	return true;
 }
 
-Unfold::Unfold(int algorithm, const char *name) : ov(false), uf(false), verbose(false), debug(false), 
+Unfold::Unfold(int algorithm, const char *name) : 
+	true_uf(false), true_ov(false), meas_uf(false), meas_ov(false),
+	verbose(false), debug(false), 
 	rndm(0), nt(0), nr(0), iterations(0), 
 	dimensions_true(0), dimensions_meas(0),
 	nbinsx_true(0), nbinsy_true(0), nbinsz_true(0),
@@ -91,14 +94,11 @@ Unfold::~Unfold() {
 bool Unfold::add_response_matrix(const char *file, const char *name, double weight) {
 	TFile fp(file, "read");
 
-printf("jsv here we are 1 %s %d\n", name, n_response);
-
 	if(n_response == 0) {
 		sprintf(str, "response_%s", name);
 		response = (TH2D *)fp.Get(str);
 		response->Scale(weight);
 		response->SetDirectory(0);
-printf("we are so good\n");
 	} else {
 		sprintf(str, "response_%s", name);
 		TH2D *h = (TH2D *)fp.Get(str);
@@ -106,10 +106,6 @@ printf("we are so good\n");
 	}
 
 	++n_response;
-
-/* jsv. need to deal with overflow and underflow */
-
-#if 0
 
 	sprintf(str, "efficiency_numer_%s", name);
 	h_efficiency_numer = (TH1D *)fp.Get(str);
@@ -120,6 +116,10 @@ printf("we are so good\n");
 	h_efficiency_denom = (TH1D *)fp.Get(str);
 	h_efficiency_denom->Scale(weight);
 	h_efficiency_denom->SetDirectory(0);
+
+/* jsv. need to deal with overflow and underflow */
+
+#if 0
 
 	sprintf(str, "dimensions_%s", name);
 	TH2D *h_dim = (TH2D *)fp.Get(str);
@@ -182,11 +182,11 @@ bool Unfold::initialize_response_matrix(void) {
 
 	int i, j, binx, biny;
 
-	nt = response->GetNbinsX();
-	nr = response->GetNbinsY();
+	int nx = response->GetNbinsX(), ny = response->GetNbinsY();
 
-printf("jsv. nt = %d. nr = %d\n", nt, nr);
+printf("jsv. nx = %d. ny = %d\n", nx, ny);
 
+#if 0
 	int nt_expected = 0;
 	if(dimensions_true == 1) {
 		nt_expected = (nbinsx_true + ((ov ? 1 : 0) + (uf ? 1 : 0)));
@@ -209,49 +209,106 @@ printf("jsv. nt = %d. nr = %d\n", nt, nr);
 
 printf("jsv. expected %d %d\n", nt_expected, nr_expected);
 
+#endif
 	// if(overflow == false) { nt -= 2; nr -= 2; }
 
-	M = new double * [ nr ];
-	R = new double * [ nr ];
-	dR = new double * [ nr ];
-	eff = new double [ nt ];
-	deff = new double [ nt ];
-	for(i=0;i<nr;++i) M[i] = new double [ nt ];
-	for(i=0;i<nr;++i) R[i] = new double [ nt ];
-	for(i=0;i<nr;++i) dR[i] = new double [ nt ];
-	for(i=0;i<nr;++i) { for(j=0;j<nt;++j) R[i][j] = M[i][j] = 0.0; }
-
-/* JSV JSV JSV efficiency from response matrix */
-	// int start = overflow ? 2 : 1;
-	int start = 1;
-
-	for(i=0,binx=start;i<nt;++i,++binx) {
-		double ad = h_efficiency_denom->GetBinContent(binx);
-		double an = h_efficiency_numer->GetBinContent(binx);
-		double ed = h_efficiency_denom->GetBinError(binx);
-		double en = h_efficiency_numer->GetBinError(binx);
-		eff[i] = deff[i] = 0.0; 
-		if(ad != 0.0 && an != 0.0) { /* more or less normal */ 
-			eff[i] = an / ad;
-			deff[i] = eff[i] * sqrt(pow(en/an,2.0)+pow(ed/ad,2.0));
+/* TRUE: if any underflow bins are detected as != 0.0, then underflow bins are to be used */
+	true_uf = false, true_ov = false;
+	for(i=0;i<=(nx+1);++i) {
+		if(response->GetBinContent(i, 0) != 0.0) { 
+			true_uf = true;
+			break;
 		}
-		printf("efficiency(bin=%d) = %f +/- %f\n", binx, eff[i], deff[i]);
 	}
 
-	for(j=0,biny=start;j<nt;++j,++biny) {
-		double acc = 0.0;
-		double a = h_efficiency_denom->GetBinContent(biny);
-		for(i=0,binx=start;i<nr;++i,++binx) {
-			R[i][j] = response->GetBinContent(binx, biny);
-			acc += R[i][j];
-			dR[i][j] = response->GetBinError(binx, biny);
+/* if any overflow bins are detected as != 0.0, then overflow bins are to be used */
+	for(i=0;i<=(nx+1);++i) {
+		if(response->GetBinContent(i, ny+1) != 0.0) {
+			true_ov = true;
+			break;
 		}
-		for(i=0;i<nr;++i) { R[i][j] /= a; }
-		double old_eff = eff[j];
-		eff[j] = 0.0;
-		for(i=0;i<nr;++i) { eff[j] += R[i][j]; }
-		printf("compare(%d->%d) effs = (%f, %f). diff = %f\n", j, biny, old_eff, eff[j], eff[j] / old_eff);
+	}
+	nt = nx + (true_uf ? 1 : 0) + (true_ov ? 1 : 0);
+printf("TRUE: UF=%s. OV=%s\n", true_uf ? "true" : "false", true_ov ? "true" : "false");
+
+/* MEAS: if any underflow bins are detected as != 0.0, then underflow bins are to be used */
+	meas_uf = false, meas_ov = false;
+	for(i=0;i<=(ny+1);++i) {
+		if(response->GetBinContent(0, i) != 0.0) { 
+			meas_uf = true;
+			break;
+		}
+	}
+
+/* if any overflow bins are detected as != 0.0, then overflow bins are to be used */
+	for(i=0;i<=(ny+1);++i) {
+		if(response->GetBinContent(nx+1, i) != 0.0) { 
+			meas_ov = true;
+			break;
+		}
+	}
+	nr = ny + (meas_uf ? 1 : 0) + (meas_ov ? 1 : 0);
+printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "false");
+
+	M = new double * [ nt ];
+	R = new double * [ nt ];
+	dR = new double * [ nt ];
+	eff = new double [ nt ];
+	deff = new double [ nt ];
+	for(i=0;i<nt;++i) M[i] = new double [ nr ];
+	for(i=0;i<nt;++i) R[i] = new double [ nr ];
+	for(i=0;i<nt;++i) dR[i] = new double [ nr ];
+	for(i=0;i<nt;++i) { for(j=0;j<nr;++j) R[i][j] = M[i][j] = 0.0; }
+
+	int x_start = true_uf ? 0 : 1;
+	int y_start = meas_uf ? 0 : 1;
+
+	if(n_response == 1) {
+
+		for(i=0,binx=x_start;i<nt;++i,++binx) {
+			for(j=0,biny=y_start;j<nr;++j,++biny) {
+				R[i][j] = response->GetBinContent(binx, biny);
+				printf("R[%d][%d] = %f\n", i, j, R[i][j]);
+			}
+		}
+
+#if 0
+/* jsv add support for multiple response matrices */
+	} else if(n_response != 1) {
+
+		// int start = uf ? 2 : 1;
+		for(i=0,binx=start;i<nt;++i,++binx) {
+			double ad = h_efficiency_denom->GetBinContent(binx);
+			double an = h_efficiency_numer->GetBinContent(binx);
+			double ed = h_efficiency_denom->GetBinError(binx);
+			double en = h_efficiency_numer->GetBinError(binx);
+			eff[i] = deff[i] = 0.0; 
+			if(ad != 0.0 && an != 0.0) { /* more or less normal */ 
+				eff[i] = an / ad;
+				deff[i] = eff[i] * sqrt(pow(en/an,2.0)+pow(ed/ad,2.0));
+			}
+			printf("efficiency(bin=%d) = %f +/- %f\n", binx, eff[i], deff[i]);
+		}
+
+
+		for(j=0,biny=start;j<nt;++j,++biny) {
+			double acc = 0.0;
+			double a = h_efficiency_denom->GetBinContent(biny);
+			for(i=0,binx=start;i<nr;++i,++binx) {
+				R[i][j] = response->GetBinContent(binx, biny);
+				printf("R[%d][%d] = %f\n", i, j, R[i][j]);
+				acc += R[i][j];
+				dR[i][j] = response->GetBinError(binx, biny);
+			}
+			for(i=0;i<nr;++i) { R[i][j] /= a; }
+			double old_eff = eff[j];
+			eff[j] = 0.0;
+			for(i=0;i<nr;++i) { eff[j] += R[i][j]; }
+			printf("compare(%d->%d) effs = (%f, %f). diff = %f\n", j, biny, old_eff, eff[j], eff[j] / old_eff);
 			
+		}
+#endif
+
 	}
 
 /* the inverse response matrix */
@@ -376,22 +433,44 @@ bool Unfold::cleanup() {
 
 }
 
-double *Unfold::get_true() {
-	return y;
-}
+double *Unfold::get_true() { return y; }
+
+double **Unfold::get_response_matrix() { return R; }
 
 bool Unfold::set_true(TH1D *h) {
-	sprintf(str, "true_%s", str);
-	h_x_true = new TH1D(*h);
-	h_x_true->SetName(str);
-	h_x_true->SetDirectory(0);
-	int start = ov ? 0 : 1;
-	for(int i=0;i<nt;++i) y[i] = h_x_true->GetBinContent(i + start);
+	// h_x_true = new TH1D(*h);
+	// sprintf(str, "%s", str);
+	// h_x_true->SetName(str);
+	// h_x_true->SetDirectory(0);
+	int nbins = h->GetNbinsX();
+	int start = true_uf ? 0 : 1;
+	int stop = true_ov ? (nbins + 1) : nbins;
+printf("stop = %d. start = %d. true uf/ov = %s/%s\n", stop, start, true_uf ? "true" : "false", true_ov ? "true" : "false");
+	int nread = 1 + stop - start;
+	if(nt != nread) {
+		printf("mismatch number of bins. read %d. expected %d.\n", nread, nr); 
+		return false;
+	}
+	for(int i=0;i<=stop;++i) y[i] = h->GetBinContent(i + start);
+	printf("setting true = \n");
+	for(int i=0;i<nt;++i) printf("%.1f\n", y[i]);
 	return true;
 }
 
+#if 0
+bool Unfold::set_true(TH1D *h) {
+	sprintf(str, "%s", str);
+	h_x_true = new TH1D(*h);
+	h_x_true->SetName(str);
+	h_x_true->SetDirectory(0);
+	int start = true_uf ? 0 : 1;
+	for(int i=0;i<nt;++i) y[i] = h_x_true->GetBinContent(i + start);
+	return true;
+}
+#endif
+
 bool Unfold::set_true(TH2D *h) {
-	sprintf(str, "true_%s", str);
+	sprintf(str, "%s", str);
 	h_x_y_true = new TH2D(*h);
 	h_x_y_true->SetName(str);
 	h_x_y_true->SetDirectory(0);
@@ -400,7 +479,7 @@ bool Unfold::set_true(TH2D *h) {
 }
 
 bool Unfold::set_true(TH3D *h) {
-	sprintf(str, "true_%s", str);
+	sprintf(str, "%s", str);
 	h_x_y_z_true = new TH3D(*h);
 	h_x_y_z_true->SetName(str);
 	h_x_y_z_true->SetDirectory(0);
@@ -416,6 +495,9 @@ bool Unfold::set_true(double *y, int N) {
 
 bool Unfold::set_true(const char *file, const char *name) {
 	TFile fp(file, "read");
+
+#if 0
+	TFile fp(file, "read");
 	sprintf(str, "dimensions_%s", name);
 	TH2D *h_dim = (TH2D *)fp.Get(str);
 	if(dimensions_true == 0) {
@@ -429,17 +511,30 @@ bool Unfold::set_true(const char *file, const char *name) {
 			return false;
 		}
 	}
+#endif
+
+	dimensions_true = 1; /* jsv */
 
 	if(dimensions_true == 1) {
-		TFile fp(file, "read");
 		TH1D *h = (TH1D *)fp.Get(name); 
-		nbinsx_true = h->GetNbinsX();
-		if(nbinsx_true != nt) { 
-			printf("mismatch in number of true bins. expected (%d X %d). found (%d X %d)\n", 
-				nbinsx_true, nt);
+		int nbins = h->GetNbinsX();
+		bool uf = (h->GetBinContent(0) != 0.0), ov = (h->GetBinContent(nbins+1) != 0.0);
+		if(uf == false && true_uf) {
+			printf("UF != 0 in TRUE histogram but UF is used in response matrix");
+			return false;
+		}
+		if(ov == false && true_ov) {
+			printf("OV != 0 in TRUE histogram but OV is used in response matrix");
+			return false;
+		}
+		nbins += uf ? 1 : 0;
+		nbins += ov ? 1 : 0;
+		if(nbins != nt) { 
+			printf("mismatch in number of true bins. expected %d. found %d\n", nt, nbins);
 			return false;
 		}
 		return set_true(h);
+
 #if 0
 	} else if(dimensions_true == 2) {
 		TFile fp(file, "read");
@@ -479,13 +574,14 @@ bool Unfold::set_meas(double *n, int N) {
 }
 
 bool Unfold::set_meas(TH1D *h) {
-	h_x_meas = new TH1D(*h);
-	sprintf(str, "meas_%s", str);
-	h_x_meas->SetName(str);
-	h_x_meas->SetDirectory(0);
+	// h_x_meas = new TH1D(*h);
+	// sprintf(str, "%s", str);
+	// h_x_meas->SetName(str);
+	// h_x_meas->SetDirectory(0);
 	int nbins = h->GetNbinsX();
-	int start = uf ? 0 : 1;
-	int stop = ov ? (nbins + 1) : nbins;
+	int start = meas_uf ? 0 : 1;
+	int stop = meas_ov ? (nbins + 1) : nbins;
+printf("stop = %d. start = %d. meas uf/ov = %s/%s\n", stop, start, meas_uf ? "true" : "false", meas_ov ? "true" : "false");
 	int nread = 1 + stop - start;
 	if(nr != nread) {
 		printf("mismatch number of bins. read %d. expected %d.\n", nread, nr); 
@@ -498,7 +594,7 @@ bool Unfold::set_meas(TH1D *h) {
 }
 
 bool Unfold::set_meas(TH2D *h) {
-	sprintf(str, "meas_%s", str);
+	sprintf(str, "%s", str);
 	h_x_y_meas = new TH2D(*h);
 	h_x_y_meas->SetName(str);
 	h_x_y_meas->SetDirectory(0);
@@ -507,7 +603,7 @@ bool Unfold::set_meas(TH2D *h) {
 }
 
 bool Unfold::set_meas(TH3D *h) {
-	sprintf(str, "meas_%s", str);
+	sprintf(str, "%s", str);
 	h_x_y_z_meas = new TH3D(*h);
 	h_x_y_z_meas->SetName(str);
 	h_x_y_z_meas->SetDirectory(0);
@@ -517,6 +613,7 @@ bool Unfold::set_meas(TH3D *h) {
 
 bool Unfold::set_meas(const char *file, const char *name) {
 	TFile fp(file, "read");
+#if 0
 	sprintf(str, "dimensions_%s", name);
 	TH2D *h_dim = (TH2D *)fp.Get(str);
 	if(dimensions_meas == 0) {
@@ -530,18 +627,32 @@ bool Unfold::set_meas(const char *file, const char *name) {
 			return false;
 		}
 	}
+#endif
+
+	dimensions_meas = 1; /* jsv */
 
 	if(dimensions_meas == 1) {
-		TFile fp(file, "read");
 		TH1D *h = (TH1D *)fp.Get(name); 
-		int nx = h->GetNbinsX();
-		if(nx != nbinsx_meas) { 
-			printf("mismatch in number of meas bins. expected %d. found %d\n", nbinsx_meas, nx);
+		int nbins = h->GetNbinsX();
+		bool uf = (h->GetBinContent(0) != 0.0), ov = (h->GetBinContent(nbins+1) != 0.0);
+		if(uf == false && meas_uf) {
+			printf("UF != 0 in MEAS histogram but UF is used in response matrix");
+			return false;
+		}
+		if(ov == false && meas_ov) {
+			printf("OV != 0 in MEAS histogram but OV is used in response matrix");
+			return false;
+		}
+		nbins += uf ? 1 : 0;
+		nbins += ov ? 1 : 0;
+		if(nbins != nr) { 
+			printf("mismatch in number of meas bins. expected %d. found %d\n", nr, nbins);
 			return false;
 		}
 		return set_meas(h);
+#if 0
+/* jsv */
 	} else if(dimensions_meas == 2) {
-		TFile fp(file, "read");
 		TH2D *h = (TH2D *)fp.Get(name); 
 		int nx = h->GetNbinsX(), ny = h->GetNbinsY();
 		if((nbinsx_meas != nx) || (nbinsy_meas != ny)) { 
@@ -551,7 +662,6 @@ bool Unfold::set_meas(const char *file, const char *name) {
 		}
 		return set_meas(h);
 	} else if(dimensions_meas == 3) {
-		TFile fp(file, "read");
 		TH3D *h = (TH3D *)fp.Get(name); 
 		int nx = h->GetNbinsX(), ny = h->GetNbinsY(), nz = h->GetNbinsZ();
 		if((nbinsx_meas != nx) || (nbinsy_meas != ny) || (nbinsz_meas != nz)) { 
@@ -560,6 +670,7 @@ bool Unfold::set_meas(const char *file, const char *name) {
 			return false;
 		}
 		return set_meas(h);
+#endif
 	}
 
 	return false;

@@ -53,12 +53,13 @@ class Unfold {
 	bool bootstrap(double *n = 0);
 	double *get_true();
 	double *get_meas();
+	double **get_response_matrix();
 	int get_n_true() { return nt; };
 	int get_n_meas() { return nr; };
 
 	private:
 
-	bool ov, uf;
+	bool true_uf, true_ov, meas_uf, meas_ov;
 	TH1D *h_x_true, *h_x_meas;
 	TH2D *h_x_y_true, *h_x_y_meas;
 	TH3D *h_x_y_z_true, *h_x_y_z_meas;
