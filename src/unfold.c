@@ -4,6 +4,7 @@
 #include "TH2D.h"
 #include "TH3D.h"
 #include "TFile.h"
+#include "TTree.h"
 #include "TMath.h"
 #include "TMatrixD.h"
 
@@ -55,6 +56,40 @@ static bool find_inverse(double **A, double **Ainv, int n) {
 	}
 #endif
 
+	return true;
+}
+
+/* find solution to R * y = n using Cramer's rule. jsv not tested */
+bool get_maximum_likelihood_solution(double **R, double *y, int nt, double *n, int nr) { 
+/* this is written as if nr could be different than nt, but nr = nt is required. 
+	written this way for transparency */
+	int i, j, k;
+	TMatrixD Rcopy(nr, nt);
+	for(j=0;j<nr;++j) { for(k=0;k<nt;++k) Rcopy[j][k] = R[j][k]; }
+	double det, det0 = Rcopy.Determinant();
+	if(det0 == 0.0) { for(i=0;i<nt;++i) { y[i] = 0.0; } return false; }
+	for(i=0;i<nt;++i) {
+		TMatrixD M(nr, nt);
+		for(j=0;j<nr;++j) { for(k=0;k<nt;++k) M[j][k] = R[j][k]; }
+		for(j=0;j<nr;++j) M[j][i] = n[j];
+		det = M.Determinant();
+		y[i] = det / det0;
+	}
+
+/*
+	printf("solution: ");
+	for(i=0;i<nt;++i) printf("%6.4f ", y[i]); 
+	printf("\n");
+	getchar();
+ */
+
+	return true;
+}
+
+bool Unfold::bootstrap(double *n) {
+	int i;
+	if(n == 0) for(i=0;i<nr;++i) this->n[i] = rndm->Poisson(n[i]);
+	else n[i] = rndm->Poisson(n[i]);
 	return true;
 }
 
@@ -802,7 +837,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 	double *ycand = new double [ nr ];
 	double *ysave = new double [ nr ];
 
-	this->trials = -1; /* nothing good has happened yet */
+	trials = -1; /* nothing good has happened yet */
 
 	TH1D **pdf = create_pdfs(n, nr);
 	// create_pdfs(Rinv, pdf, nr); /* jsv */
@@ -938,7 +973,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 	for(i=0;i<nr;++i) { delete pdf[i]; }
 	delete [] pdf;
 
-	this->trials = trial; /* return the number of trials required for convergence */
+	trials = trial; /* return the number of trials required for convergence */
 
 	return converge;
 
@@ -1075,6 +1110,7 @@ TH1D **Unfold::create_pdfs(double **Rinv, TH1D **pdf0, int nr) {
 	delete [] ytemp;
 }
 
+#if 0
 /* find solution to R * y = n using Cramer's rule */
 bool Unfold::get_maximum_likelihood_solution(double *y) { 
 /* this is written as if nr could be different than nt, but nr = nt is required. 
@@ -1093,73 +1129,270 @@ bool Unfold::get_maximum_likelihood_solution(double *y) {
 	}
 	return true;
 }
+#endif
 
-#if 1
 /* find solution to R * y = n using matrix inversion */
 bool Unfold::get_maximum_likelihood_solution(double *y, double *n) { 
+	trials = 1; /* number of tries is always 1 for MLE. here for consistency with other methods */
+	if(n == 0) n = this->n;
 /* this is written as if nr could be different than nt, but nr = nt is required. 
 	written this way for transparency */
 	int i, j;
 	for(i=0;i<nt;++i) {
 		double acc = 0.0;
-		for(j=0;j<nr;++j) acc += Rinv[i][j] * n[j];
+		for(j=0;j<nr;++j) acc += n[j] * Rinv[j][i];
 		y[i] = acc;
 	}
+	return true;
+}
 
-/*
-	printf("solution: ");
-	for(i=0;i<nt;++i) printf("%6.4f ", y[i]); 
-	printf("\n");
-	getchar();
- */
+bool Unfold::statistical_analysis(int ntrials, int option, const char *ntuple, bool detail) {
+	bool stat = false;
+	if(option == UseUnfolded) stat = statistical_analysis(y, ntrials, ntuple, detail);
+	else if(option == UseTruth) stat = statistical_analysis(y_true, ntrials, ntuple, detail);
+	return stat;
+}
 
-/*
-	for(i=0;i<nt;++i) {
-		for(j=0;j<nt;++j) {
-			double acc = 0.0;
-			for(int k=0;k<nt;++k) acc += R[i][k] * Rinv[k][j];
-			printf("%6.4f ", acc);
+bool Unfold::write_basic_info(const char *file) {
+
+	TTree *tree = 0;
+	TFile *fp = 0;
+	int i, j, k, dim = nt, dim2 = nt * nr;
+	double *Rinv = new double [ dim2 ]; 
+	double *R = new double [ dim2 ]; 
+	double *dR = new double [ dim2 ]; 
+	double *ntrue = new double [ nr ];
+	double *ytrue = new double [ nt ];
+	double *n = new double [ nr ];
+	double *y = new double [ nt ];
+	double *eff = new double [ nt ];
+	double *deff = new double [ nt ];
+
+	fp = new TFile(file, "update");
+	tree = new TTree("info", "info");
+	tree->Branch("nt", &nr, "nt/I");
+	tree->Branch("nr", &nr, "nr/I");
+	tree->Branch("dim", &dim, "dim/I");
+	tree->Branch("dim2", &dim2, "dim2/I");
+	tree->Branch("R", R, "R[dim2]/D");
+	tree->Branch("dR", dR, "dR[dim2]/D");
+	tree->Branch("Rinv", Rinv, "Rinv[dim2]/D");
+	tree->Branch("eff", eff, "eff[nt]/D");
+	tree->Branch("deff", deff, "deff[nt]/D");
+	tree->Branch("y", y, "y[nt]/D");
+	tree->Branch("n", n, "n[nr]/D");
+	tree->Branch("ytrue", ytrue, "ytrue[nt]/D");
+	tree->Branch("ntrue", ntrue, "ntrue[nr]/D");
+	for(i=0;i<nt;++i) eff[i] = this->eff[i]; 
+	for(i=0;i<nt;++i) deff[i] = this->deff[i]; 
+	for(i=0;i<nt;++i) ytrue[i] = this->y_true[i]; 
+	for(i=0;i<nr;++i) { ntrue[i] = 0.0; for(j=0;j<nt;++j) { ntrue[i] += ytrue[j] * this->R[i][j]; } } 
+	for(i=0;i<nt;++i) y[i] = this->y[i]; 
+	for(i=0;i<nr;++i) n[i] = this->n[i]; 
+	for(i=k=0;i<nt;++i) { for(j=0;j<nr;++j) { R[k++] = this->R[i][j]; } }
+	for(i=k=0;i<nt;++i) { for(j=0;j<nr;++j) { dR[k++] = this->dR[i][j]; } }
+	for(i=k=0;i<nt;++i) { for(j=0;j<nr;++j) { Rinv[k++] = this->Rinv[i][j]; } }
+	tree->Fill();
+	tree->Write();
+	fp->Write();
+	fp->Close();
+	delete fp;
+
+	delete [] R;
+	delete [] dR;
+	delete [] Rinv;
+	delete [] ntrue;
+	delete [] ytrue;
+	delete [] n;
+	delete [] y;
+	delete [] eff;
+	delete [] deff;
+
+	return true;
+}
+
+/* uses input distribution "y" and response matrix "R" to calculate expected response into "mu".
+ * the user can input a different response matrix. If R == 0, default response matrix is used */
+bool Unfold::calculate_response(double *y, double *mu, double **R) {
+	if(R == 0) R = this->R;
+	for(int i=0;i<nr;++i) {
+		double acc = 0.0;
+		for(int j=0;j<nt;++j) acc += y[j] * R[j][i];
+		mu[i] = acc;
+	}
+}
+
+bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, bool detail) {
+	int i, j, k, trial, status, throws, dim2;
+	double *mu = new double [ nr ];
+	double *ntemp = new double [ nr ];
+	double *ytemp = new double [ nt ];
+	double *sumx0 = new double [ nt ];
+	double *sumx1 = new double [ nt ];
+	double *sumx2 = new double [ nt ];
+	double *atemp = 0, *btemp = 0, *ctemp = 0, *cov = 0, *J = 0; 
+	if(detail) {
+		atemp = new double [ nt ];
+		btemp = new double [ nt ];
+		ctemp = new double [ nt * nt ];
+		cov = new double [ nr * nr ]; /* used as contiguous array */
+		J = new double [ nt * nr ]; /* used as contiguous array */
+	}
+	TTree *tree = 0;
+	TFile *fp = 0;
+	dim2 = nt * nr;
+
+	write_basic_info(file);
+
+	fp = new TFile(file, "update");
+	tree = new TTree("extraction", "extraction");
+	tree->Branch("throws", &throws, "throws/I");
+	tree->Branch("status", &status, "status/I");
+	tree->Branch("dim", &nr, "dim/I");
+	tree->Branch("dim2", &dim2, "dim2/I");
+	tree->Branch("n", ntemp, "n[dim]/D");
+	tree->Branch("y", ytemp, "y[dim]/D");
+	if(detail) {
+		tree->Branch("a", atemp, "a[dim]/D");
+		tree->Branch("b", btemp, "b[dim]/D");
+		tree->Branch("c", ctemp, "c[dim2]/D");
+		tree->Branch("cov", cov, "cov[dim2]/D");
+		tree->Branch("J", J, "J[dim2]/D");
+	}
+
+/* put away the central value. use status = 0 */
+	for(i=0;i<nt;++i) ytemp[i] = y[i];
+	for(i=0;i<nr;++i) ntemp[i] = n[i];
+	status = CentralValue;
+	throws = 0;
+	tree->Fill();
+
+	calculate_response(y0, mu); /* final working value of mu */
+
+/* the input values used. status = 1 */
+	for(i=0;i<nt;++i) ytemp[i] = y0[i];
+	for(i=0;i<nr;++i) ntemp[i] = mu[i];
+	status = InputValue;
+	throws = 0;
+	tree->Fill();
+
+	for(trial=0;trial<ntrials;++trial) {
+		if((trial % 100) == 0) printf("trial %d / %d\n", trial, ntrials);
+		for(i=0;i<nr;++i) ntemp[i] = rndm->Poisson(mu[i]);
+		bool flag = run(ytemp, ntemp, 0);
+		status = flag ? PoissonExtraction : NBiasNtupleOptions; /* success or failure */
+		throws = this->trials; /* get the number of times dice was thrown to obtain convergence */
+		if(detail) {
+			for(i=k=0;i<nr;++i) { for(j=0;j<nr;++j) { ctemp[k++] = C[i][j]; } }
+			for(i=k=0;i<nr;++i) { for(j=0;j<nr;++j) { cov[k++] = this->cov[i][j]; } } /* jsv where is this used? */
+			for(i=k=0;i<nr;++i) { for(j=0;j<nr;++j) { J[k++] = this->J[i][j]; } }
+			for(i=0;i<nr;++i) { atemp[i] = A[i]; btemp[i] = B[i]; } 
 		}
-		printf("\n");
-	}
-	getchar();
- */
-
-	return true;
-}
-#else
-/* find solution to R * y = n using Cramer's rule */
-bool Unfold::get_maximum_likelihood_solution(double *y, double *n) { 
-/* this is written as if nr could be different than nt, but nr = nt is required. 
-	written this way for transparency */
-	int i, j, k;
-	TMatrixD Rcopy(nr, nt);
-	for(j=0;j<nr;++j) { for(k=0;k<nt;++k) Rcopy[j][k] = R[j][k]; }
-	double det, det0 = Rcopy.Determinant();
-	if(det0 == 0.0) { for(i=0;i<nt;++i) { y[i] = 0.0; } return false; }
-	for(i=0;i<nt;++i) {
-		TMatrixD M(nr, nt);
-		for(j=0;j<nr;++j) { for(k=0;k<nt;++k) M[j][k] = R[j][k]; }
-		for(j=0;j<nr;++j) M[j][i] = n[j];
-		det = M.Determinant();
-		y[i] = det / det0;
+		tree->Fill();
+		if(autosave) tree->AutoSave();
 	}
 
-/*
-	printf("solution: ");
-	for(i=0;i<nt;++i) printf("%6.4f ", y[i]); 
-	printf("\n");
-	getchar();
- */
+	fp->cd();
+	tree->Write();
+	fp->Write();
+	fp->Close();
+	delete fp;
 
-	return true;
+// jsv not required?	delete tree;
+
+	if(detail) {
+		delete [] J;
+		delete [] cov;
+		delete [] atemp;
+		delete [] btemp;
+		delete [] ctemp;
+	}
+	delete [] mu;
+	delete [] ntemp;
+	delete [] ytemp;
+	delete [] sumx0;
+	delete [] sumx1;
+	delete [] sumx2;
+
 }
+
+bool Unfold::closure_test(const char *file, const char *name) {
+
+	if(dimensions_true == 1) {
+		TFile fp(file, "read");
+		TH1D *h = (TH1D *)fp.Get(name); 
+		int nx = h->GetNbinsX();
+		if(nx != nbinsx_true) { 
+			printf("mismatch in number of true bins. expected %d. found %d\n", nbinsx_true, nx);
+			return false;
+		}
+		return closure_test(h);
+#if 0
+	} else if(dimensions_true == 2) {
+		TFile fp(file, "read");
+		TH2D *h = (TH2D *)fp.Get(name); 
+		int nx = h->GetNbinsX(), ny = h->GetNbinsY();
+		if((nbinsx_true != nx) || (nbinsy_true != ny)) { 
+			printf("mismatch in number of true bins. expected (%d X %d). found (%d X %d)\n", 
+				nbinsx_true, nbinsy_true, nx, ny);
+			return false;
+		}
+		return closure_test(h);
+	} else if(dimensions_true == 3) {
+		TFile fp(file, "read");
+		TH3D *h = (TH3D *)fp.Get(name); 
+		int nx = h->GetNbinsX(), ny = h->GetNbinsY(), nz = h->GetNbinsZ();
+		if((nbinsx_true != nx) || (nbinsy_true != ny) || (nbinsz_true != nz)) { 
+			printf("mismatch in number of true bins. expected (%d X %d X %d). found (%d X %d X %d)\n", 
+				nbinsx_true, nbinsy_true, nbinsz_true, nx, ny, nz);
+			return false;
+		}
+		return closure_test(h);
 #endif
+	}
 
-bool Unfold::bootstrap(double *n) {
-	int i;
-	if(n == 0) for(i=0;i<nr;++i) this->n[i] = rndm->Poisson(n[i]);
-	else n[i] = rndm->Poisson(n[i]);
+	return false;
+
+}
+
+bool Unfold::closure_test(double *y) {
+	for(int i=0;i<nt;++i) {
+		closure_ratio[i] = (y[i] != 0.0) ? (this->y[i] / y[i]) : 0.0;
+	}
+	return true;
+}
+
+bool Unfold::closure_test(TH1D *h) {
+/* jsv what is start point? */
+	for(int i=0;i<nt;++i) {
+		int bin = i + 1;
+		double a = h->GetBinContent(bin);
+		double r = (a != 0.0) ? (y[i] / a) : 0.0;
+		closure_ratio[i] = r;
+		// printf("bin(%d) compare %f to %f. ratio = %f\n", i, y[i], a, r);
+	}
+	return true;
+}
+
+bool Unfold::closure_test(TH2D *h) {
+	for(int i=0;i<nt;++i) {
+		int bin = i + 1;
+		double a = h->GetBinContent(bin);
+		double r = (a != 0.0) ? (y[i] / a) : 0.0;
+		closure_ratio[i] = r;
+		// printf("bin(%d) compare %f to %f. ratio = %f\n", i, y[i], a, r);
+	}
+	return true;
+}
+
+bool Unfold::closure_test(TH3D *h) {
+	for(int i=0;i<nt;++i) {
+		int bin = i + 1;
+		double a = h->GetBinContent(bin);
+		double r = (a != 0.0) ? (y[i] / a) : 0.0;
+		closure_ratio[i] = r;
+		// printf("bin(%d) compare %f to %f. ratio = %f\n", i, y[i], a, r);
+	}
 	return true;
 }
 

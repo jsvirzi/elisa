@@ -6,12 +6,19 @@
 #include "TH2D.h"
 #include "TH3D.h"
 
+bool get_maximum_likelihood_solution(double **R, double *y, int nt, double *n, int nr);
+
 class Unfold {
 
 	public:
 
 	Unfold(int algorithm, const char *name = 0);
 	~Unfold();
+
+	enum {
+		UseUnfolded,
+		UseTruth
+	};
 
 /* the different algorithm for unfolding */
 	enum {
@@ -20,6 +27,13 @@ class Unfold {
 		BayesianIteration,
 		MaximumLikelihood,
 	} UnfoldingAlgorithm;
+
+	enum {
+		CentralValue,
+		InputValue,
+		PoissonExtraction,
+		NBiasNtupleOptions
+	} BiasNtupleOptions;
 
 	void set_seed(int seed) { this->seed = seed; };
 	int get_seed() { return seed; };
@@ -48,17 +62,26 @@ class Unfold {
 	bool get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess);
 	TH1D **create_pdfs(double *n, int nr);
 	TH1D **create_pdfs(double **Rinv, TH1D **pdf0, int nr);
-	bool get_maximum_likelihood_solution(double *y);
-	bool get_maximum_likelihood_solution(double *y, double *n);
+	// bool get_maximum_likelihood_solution(double *y);
+	bool get_maximum_likelihood_solution(double *y = 0, double *n = 0);
 	bool bootstrap(double *n = 0);
 	double *get_true();
 	double *get_meas();
 	double **get_response_matrix();
 	int get_n_true() { return nt; };
 	int get_n_meas() { return nr; };
+	bool statistical_analysis(double *y0, int ntrials, const char *ntuple, bool detail = true);
+	bool statistical_analysis(int ntrials, int option, const char *ntuple, bool detail = true);
+	bool calculate_response(double *y, double *mu, double **R = 0);
+	bool closure_test(const char *file, const char *name);
+	bool closure_test(TH1D *h);
+	bool closure_test(TH2D *h);
+	bool closure_test(TH3D *h);
+	bool closure_test(double *y);
 
 	private:
 
+	bool write_basic_info(const char *ntuple);
 	bool true_uf, true_ov, meas_uf, meas_ov;
 	TH1D *h_x_true, *h_x_meas;
 	TH2D *h_x_y_true, *h_x_y_meas;

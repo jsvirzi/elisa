@@ -6,10 +6,10 @@ bool debug = false, verbose = false;
 
 int main(int argc, char **argv) {
 
-	std::string name, dfile, dname, rfile, rname, tfile, tname, ofile;
+	std::string name, dfile, dname, rfile, rname, tfile, tname, ofile, sfile;
 	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0;
 	double epsilon = 0.001;
-	bool cov = false, bootstrap = false;
+	bool cov = false, bootstrap = false, truth = false;
 
 /* defaults */
 	rfile = "example/response_matrix.root";
@@ -28,9 +28,11 @@ int main(int argc, char **argv) {
 		} else if(strcmp("-verbose", argv[i]) == 0) { verbose = true;
 		} else if(strcmp("-r", argv[i]) == 0) { rfile = argv[++i]; rname = argv[++i]; /* response matrix */
 		} else if(strcmp("-meas", argv[i]) == 0) { dfile = argv[++i]; dname = argv[++i]; /* the data */
-		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; /* truth */
+		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; truth = true; 
 		} else if(strcmp("-trials", argv[i]) == 0) { max_trials = atoi(argv[++i]); 
-		} else if(strcmp("-stat", argv[i]) == 0) { nstat = atoi(argv[++i]); 
+		} else if(strcmp("-statistical_analysis", argv[i]) == 0) { 
+			nstat = atoi(argv[++i]); /* number of pseudo-experiments */
+			sfile = argv[++i]; /* output file for pseudo-experiments */
 		} else if(strcmp("-seed", argv[i]) == 0) { seed = atoi(argv[++i]); 
 		} else if(strcmp("-algorithm", argv[i]) == 0) { algorithm = atoi(argv[++i]); 
 		} else if(strcmp("-o", argv[i]) == 0) { ofile = argv[++i];
@@ -81,21 +83,19 @@ int main(int argc, char **argv) {
 		printf("blah(%d) = %f\n", j, acc);
 	}
 
-return 0;
-
-#if 0
-
 	if(nstat) {
 		printf("evaluating statistical uncertainty with %d trials\n", max_trials);
-		// unfold->evaluate_statistical_uncertainty(0, nstat);
-		if(bootstrap) unfold->calculate_bias(nstat, Unfold::UseTruth, "bias_ntuple_elisa.root");
-		else unfold->calculate_bias(nstat, Unfold::UseUnfolded, "bias_ntuple_elisa.root");
+		int source = truth ? Unfold::UseTruth : Unfold::UseUnfolded;
+		unfold->statistical_analysis(nstat, source, sfile.c_str());
 	}
-	if(tname.length()) unfold->closure_test(tfile.c_str(), tname.c_str());
+	if(truth) unfold->closure_test(tfile.c_str(), tname.c_str());
+#if 0
 	unfold->write_info();
 	unfold->write();
 
 #endif
+
+return 0;
 
 #if 0
 	int nt = unfold->get_nt(), nr = unfold->get_nr();
