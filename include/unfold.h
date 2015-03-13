@@ -73,6 +73,7 @@ class Unfold {
 	bool bootstrap(double *n = 0);
 	double *get_true();
 	double *get_meas();
+	double *get_solution();
 	double **get_response_matrix();
 	int get_n_true() { return nt; };
 	int get_n_meas() { return nr; };
@@ -86,6 +87,8 @@ class Unfold {
 	bool closure_test(TH2D *h);
 	bool closure_test(TH3D *h);
 	bool closure_test(double *y);
+	bool set_iterations(int iterations) { this->iterations = iterations; };
+	bool get_efficiency(double *eff);
 
 	private:
 
@@ -94,7 +97,7 @@ class Unfold {
 	TH1D *h_x_true, *h_x_meas;
 	TH2D *h_x_y_true, *h_x_y_meas;
 	TH3D *h_x_y_z_true, *h_x_y_z_meas;
-	TH1D *h_efficiency, *h_efficiency_numer, *h_efficiency_denom;
+	// TH1D *h_efficiency, *h_efficiency_numer, *h_efficiency_denom;
 	int N;
 	bool initialized, verbose, debug;
 	int seed; /* random number seed */
@@ -108,7 +111,7 @@ class Unfold {
 	double *n, *y, *z, *p, *accr, *acct, *mean, *rms, *closure_ratio, *y_true;
 	double *A, *B, **C, **cov, **icov, **J;
 	double *guess, *bias;
-	double *eff, *deff;
+	// double *eff, *deff;
 	double *prior, *dprior;
 	double epsilon; /* convergence criteria */
 	int counter0, max_trials, trials;

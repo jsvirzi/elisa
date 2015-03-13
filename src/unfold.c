@@ -101,8 +101,8 @@ Unfold::Unfold(int algorithm, const char *name) :
 	nbinsx_true(0), nbinsy_true(0), nbinsz_true(0),
 	nbinsx_meas(0), nbinsy_meas(0), nbinsz_meas(0),
 	h_x_true(0), h_x_meas(0), h_x_y_true(0), h_x_y_meas(0), h_x_y_z_true(0), h_x_y_z_meas(0),
-	h_efficiency(0), h_efficiency_denom(0), h_efficiency_numer(0),
-	eff(0), deff(0), R(0), M(0), dR(0), Rinv(0), Minv(0), response(0), 
+	// h_efficiency(0), h_efficiency_denom(0), h_efficiency_numer(0), eff(0), deff(0), 
+	R(0), M(0), dR(0), Rinv(0), Minv(0), response(0), 
 	n(0), y(0), z(0), p(0), 
 	guess(0), 
 	accr(0), acct(0), mean(0), rms(0), closure_ratio(0), y_true(0), A(0), B(0), C(0), cov(0), icov(0), J(0), 
@@ -144,6 +144,7 @@ bool Unfold::add_response_matrix(const char *file, const char *name, double weig
 
 	++n_response;
 
+#if 0
 	sprintf(str, "efficiency_numer_%s", name);
 	h_efficiency_numer = (TH1D *)fp.Get(str);
 	h_efficiency_numer->Scale(weight);
@@ -153,6 +154,7 @@ bool Unfold::add_response_matrix(const char *file, const char *name, double weig
 	h_efficiency_denom = (TH1D *)fp.Get(str);
 	h_efficiency_denom->Scale(weight);
 	h_efficiency_denom->SetDirectory(0);
+#endif
 
 /* jsv. need to deal with overflow and underflow */
 
@@ -290,8 +292,8 @@ printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "f
 	M = new double * [ nt ];
 	R = new double * [ nt ];
 	dR = new double * [ nt ];
-	eff = new double [ nt ];
-	deff = new double [ nt ];
+	// eff = new double [ nt ];
+	// deff = new double [ nt ];
 	for(i=0;i<nt;++i) M[i] = new double [ nr ];
 	for(i=0;i<nt;++i) R[i] = new double [ nr ];
 	for(i=0;i<nt;++i) dR[i] = new double [ nr ];
@@ -432,8 +434,8 @@ bool Unfold::cleanup() {
 		dR = 0;
 	}
 
-	if(eff) { delete [] eff; eff = 0; }
-	if(deff) { delete [] deff; deff = 0; }
+	// if(eff) { delete [] eff; eff = 0; }
+	// if(deff) { delete [] deff; deff = 0; }
 	if(y) { delete [] y; y = 0; }
 	if(guess) { delete [] guess; guess = 0; }
 	if(prior) { delete [] prior; prior = 0; }
@@ -470,7 +472,9 @@ bool Unfold::cleanup() {
 
 }
 
-double *Unfold::get_true() { return y; }
+double *Unfold::get_true() { return y_true; }
+
+double *Unfold::get_solution() { return y; }
 
 double **Unfold::get_response_matrix() { return R; }
 
@@ -735,7 +739,10 @@ bool Unfold::run(int option) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
 		double *guess = 0; 
-		if(option == 1) {
+		if(option == 0) {
+			guess = new double [ nt ];
+			for(int i=0;i<nt;++i) guess[i] = 1.0;
+		} else if(option == 1) {
 			guess = new double [ nt ];
 			get_maximum_likelihood_solution(guess, n);
 		} else if(option == 2) {
@@ -767,13 +774,14 @@ bool Unfold::run(int option) {
 bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess) {
 
 	int i, j;
+	double *eff = new double [ nt ];
+	get_efficiency(eff);
 
-	if(guess) { for(i=0;i<nt;++i) y[i] = guess[i];
-	} else { for(i=0;i<nt;++i) y[i] = h_efficiency_denom->GetBinContent(i+1); /* jsv */
-	}
+	if(guess) { for(i=0;i<nt;++i) y[i] = guess[i]; } 
+	else { for(i=0;i<nt;++i) y[i] = 1.0; }
 
 	if(guess) { 
-		printf("initial distribution for bayesian iteration = \n");
+		printf("initial distribution for bayesian iteration = ...\n");
 		for(i=0;i<nt;++i) printf("bin(%d) guess = %f\n", i, y[i]);
 		getchar();
 	}
@@ -827,6 +835,8 @@ bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, d
 //	for(i=0;i<nt;++i) printf("final: y(%d) = %f\n", i, y[i]); 
 
 	// printf("bayesian closure weight = %f\n", bayesian_closure_weight(y, n));
+
+	delete [] eff;
 
 	return true;
 
@@ -1155,6 +1165,15 @@ bool Unfold::statistical_analysis(int ntrials, int option, const char *ntuple, b
 	return stat;
 }
 
+bool Unfold::get_efficiency(double *eff) {
+	for(int i=0;i<nt;++i) {
+		double acc = 0.0;
+		for(int j=0;j<nr;++j) acc += R[i][j];
+		eff[i] = acc;
+	}
+	return true;
+}
+
 bool Unfold::write_basic_info(const char *file) {
 
 	TTree *tree = 0;
@@ -1168,7 +1187,8 @@ bool Unfold::write_basic_info(const char *file) {
 	double *n = new double [ nr ];
 	double *y = new double [ nt ];
 	double *eff = new double [ nt ];
-	double *deff = new double [ nt ];
+
+	get_efficiency(eff);
 
 	fp = new TFile(file, "update");
 	tree = new TTree("info", "info");
@@ -1180,13 +1200,12 @@ bool Unfold::write_basic_info(const char *file) {
 	tree->Branch("dR", dR, "dR[dim2]/D");
 	tree->Branch("Rinv", Rinv, "Rinv[dim2]/D");
 	tree->Branch("eff", eff, "eff[nt]/D");
-	tree->Branch("deff", deff, "deff[nt]/D");
 	tree->Branch("y", y, "y[nt]/D");
 	tree->Branch("n", n, "n[nr]/D");
 	tree->Branch("ytrue", ytrue, "ytrue[nt]/D");
 	tree->Branch("ntrue", ntrue, "ntrue[nr]/D");
-	for(i=0;i<nt;++i) eff[i] = this->eff[i]; 
-	for(i=0;i<nt;++i) deff[i] = this->deff[i]; 
+	// for(i=0;i<nt;++i) eff[i] = this->eff[i]; 
+	// for(i=0;i<nt;++i) deff[i] = this->deff[i]; 
 	for(i=0;i<nt;++i) ytrue[i] = this->y_true[i]; 
 	for(i=0;i<nr;++i) { ntrue[i] = 0.0; for(j=0;j<nt;++j) { ntrue[i] += ytrue[j] * this->R[i][j]; } } 
 	for(i=0;i<nt;++i) y[i] = this->y[i]; 
@@ -1208,7 +1227,6 @@ bool Unfold::write_basic_info(const char *file) {
 	delete [] n;
 	delete [] y;
 	delete [] eff;
-	delete [] deff;
 
 	return true;
 }

@@ -7,7 +7,7 @@ bool debug = false, verbose = false;
 int main(int argc, char **argv) {
 
 	std::string name, dfile, dname, rfile, rname, tfile, tname, ofile, sfile;
-	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0;
+	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0;
 	double epsilon = 0.001;
 	bool cov = false, bootstrap = false, truth = false;
 
@@ -22,6 +22,7 @@ int main(int argc, char **argv) {
 	truth = true;
 
 	algorithm = Unfold::MaximumLikelihood;
+	algorithm = Unfold::BayesianIteration;
 	// algorithm = -1;
 
 	for(int i=1;i<argc;++i) {
@@ -35,6 +36,8 @@ int main(int argc, char **argv) {
 			nstat = atoi(argv[++i]); /* number of pseudo-experiments */
 			sfile = argv[++i]; /* output file for pseudo-experiments */
 		} else if(strcmp("-seed", argv[i]) == 0) { seed = atoi(argv[++i]); 
+		} else if(strcmp("-option", argv[i]) == 0) { option = atoi(argv[++i]); 
+		} else if(strcmp("-iterations", argv[i]) == 0) { iterations = atoi(argv[++i]); 
 		} else if(strcmp("-algorithm", argv[i]) == 0) { algorithm = atoi(argv[++i]); 
 		} else if(strcmp("-o", argv[i]) == 0) { ofile = argv[++i];
 		} else if(strcmp("-name", argv[i]) == 0) { name = argv[++i];
@@ -55,6 +58,7 @@ int main(int argc, char **argv) {
 	Unfold *unfold = 0;
 	if(algorithm < 0) { unfold = new Unfold(Unfold::Elisa, name.c_str()); } 
 	else { unfold = new Unfold(algorithm, name.c_str()); }
+	if(algorithm == Unfold::BayesianIteration) unfold->set_iterations(iterations);
 	if(seed) unfold->set_seed(seed);
 	unfold->initialize_response_matrix(rfile.c_str(), rname.c_str());
 	unfold->set_meas(dfile.c_str(), dname.c_str());
@@ -62,15 +66,16 @@ int main(int argc, char **argv) {
 	if(bootstrap) unfold->bootstrap(); /* create new sample bootstrapped from input sample */
 	if(tname.length()) unfold->set_true(tfile.c_str(), tname.c_str());
 	double *n = unfold->get_meas();
-	double *y = unfold->get_true();
-	for(i=0;i<nr;++i) { printf("MEAS(%d) = %f. TRUE = %f\n", i, n[i], y[i]); }
+	double *y_true = unfold->get_true();
+	double *y = unfold->get_solution();
+	for(i=0;i<nr;++i) { printf("MEAS(%d) = %f. TRUE = %f\n", i, n[i], y_true[i]); }
 
 	// unfold->set_output_file(ofile.c_str());
 	// unfold->set_epsilon(epsilon);
 	// unfold->enable_autosave();
 	// if(max_trials) unfold->set_max_trials(max_trials);
 
-	unfold->run();
+	unfold->run(option);
 
 	for(i=0;i<nr;++i) { printf("UNFOLDED(%d) = %f\n", i, y[i]); }
 
