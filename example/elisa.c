@@ -19,6 +19,7 @@ int main(int argc, char **argv) {
 	dname = "meas_x";
 	tfile = "example/measurement_1.root";
 	tname = "true_x";
+	truth = true;
 
 	algorithm = Unfold::MaximumLikelihood;
 	// algorithm = -1;
@@ -84,9 +85,10 @@ int main(int argc, char **argv) {
 	}
 
 	if(nstat) {
-		printf("evaluating statistical uncertainty with %d trials\n", max_trials);
+		printf("evaluating statistical uncertainty with %d trials. saving to %s\n", max_trials, sfile.c_str());
 		int source = truth ? Unfold::UseTruth : Unfold::UseUnfolded;
 		unfold->statistical_analysis(nstat, source, sfile.c_str());
+		// unfold->statistical_analysis(nstat, source, sfile.c_str(), true, Unfold::ResponseMatrixVariationUniform, 0.05);
 	}
 	if(truth) unfold->closure_test(tfile.c_str(), tname.c_str());
 #if 0

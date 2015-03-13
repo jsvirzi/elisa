@@ -111,6 +111,8 @@ Unfold::Unfold(int algorithm, const char *name) :
 	{
 	this->algorithm = algorithm;
 
+	rndm = new TRandom3;
+
 	int len = strlen(name);
 	this->name = new char [ len + 1 ];
 	sprintf(this->name, name);
@@ -486,9 +488,9 @@ printf("stop = %d. start = %d. true uf/ov = %s/%s\n", stop, start, true_uf ? "tr
 		printf("mismatch number of bins. read %d. expected %d.\n", nread, nr); 
 		return false;
 	}
-	for(int i=0;i<=stop;++i) y[i] = h->GetBinContent(i + start);
+	for(int i=0;i<=stop;++i) y_true[i] = h->GetBinContent(i + start);
 	printf("setting true = \n");
-	for(int i=0;i<nt;++i) printf("%.1f\n", y[i]);
+	for(int i=0;i<nt;++i) printf("%.1f\n", y_true[i]);
 	return true;
 }
 
@@ -509,7 +511,7 @@ bool Unfold::set_true(TH2D *h) {
 	h_x_y_true = new TH2D(*h);
 	h_x_y_true->SetName(str);
 	h_x_y_true->SetDirectory(0);
-	for(int i=0;i<nt;++i) y[i] = h_x_y_true->GetBinContent(i);
+	for(int i=0;i<nt;++i) y_true[i] = h_x_y_true->GetBinContent(i);
 	return true;
 }
 
@@ -518,13 +520,13 @@ bool Unfold::set_true(TH3D *h) {
 	h_x_y_z_true = new TH3D(*h);
 	h_x_y_z_true->SetName(str);
 	h_x_y_z_true->SetDirectory(0);
-	for(int i=0;i<nt;++i) y[i] = h_x_y_z_true->GetBinContent(i);
+	for(int i=0;i<nt;++i) y_true[i] = h_x_y_z_true->GetBinContent(i);
 	return true;
 }
 
 bool Unfold::set_true(double *y, int N) {
 	if(this->N != N) return false;
-	for(int i=0;i<nr;++i) this->y[i] = y[i];
+	for(int i=0;i<nr;++i) this->y_true[i] = y[i];
 	return true;
 }
 
@@ -1146,10 +1148,10 @@ bool Unfold::get_maximum_likelihood_solution(double *y, double *n) {
 	return true;
 }
 
-bool Unfold::statistical_analysis(int ntrials, int option, const char *ntuple, bool detail) {
+bool Unfold::statistical_analysis(int ntrials, int option, const char *ntuple, bool detail, int dR_options, double dR_nominal) {
 	bool stat = false;
-	if(option == UseUnfolded) stat = statistical_analysis(y, ntrials, ntuple, detail);
-	else if(option == UseTruth) stat = statistical_analysis(y_true, ntrials, ntuple, detail);
+	if(option == UseUnfolded) stat = statistical_analysis(y, ntrials, ntuple, detail, dR_options, dR_nominal);
+	else if(option == UseTruth) stat = statistical_analysis(y_true, ntrials, ntuple, detail, dR_options, dR_nominal);
 	return stat;
 }
 
@@ -1222,7 +1224,7 @@ bool Unfold::calculate_response(double *y, double *mu, double **R) {
 	}
 }
 
-bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, bool detail) {
+bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, bool detail, int dR_options, double dR_nominal) {
 	int i, j, k, trial, status, throws, dim2;
 	double *mu = new double [ nr ];
 	double *ntemp = new double [ nr ];
@@ -1231,21 +1233,49 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	double *sumx1 = new double [ nt ];
 	double *sumx2 = new double [ nt ];
 	double *atemp = 0, *btemp = 0, *ctemp = 0, *cov = 0, *J = 0; 
-	if(detail) {
-		atemp = new double [ nt ];
-		btemp = new double [ nt ];
-		ctemp = new double [ nt * nt ];
-		cov = new double [ nr * nr ]; /* used as contiguous array */
-		J = new double [ nt * nr ]; /* used as contiguous array */
+	double **R_save = 0, **Rinv_save = 0, *Rtemp = 0;
+	if(dR_options != ResponseMatrixVariationNone) {
+		R_save = R;
+		Rinv_save = Rinv;
+		R = new double * [ nt ];
+		Rinv = new double * [ nr ];
+		for(i=0;i<nt;++i) R[i] = new double [ nr ];
+		for(i=0;i<nr;++i) Rinv[i] = new double [ nt ];
+		for(i=0;i<nt;++i) { for(j=0;j<nr;++j) R[i][j] = this->R[i][j]; }
+		bool stat = find_inverse(R, Rinv, nt);
+		if(stat == false) {
+			for(i=0;i<nt;++i) delete [] R[i];
+			for(i=0;i<nr;++i) delete [] Rinv[i];
+			delete [] R;
+			delete [] Rinv;
+			R = R_save;
+			Rinv = Rinv_save;
+			return false;
+		}
 	}
-	TTree *tree = 0;
-	TFile *fp = 0;
+
+	if(detail) {
+		int size = nt;
+		atemp = new double [ size ];
+		bzero(atemp, sizeof(double) * size);
+		btemp = new double [ size ];
+		bzero(btemp, sizeof(double) * size);
+		size = nt * nr; /* used as contiguous array */
+		ctemp = new double [ size ];
+		bzero(ctemp, sizeof(double) * size);
+		cov = new double [ size ];
+		bzero(cov, sizeof(double) * size);
+		J = new double [ size ];
+		bzero(J, sizeof(double) * size);
+		Rtemp = new double [ size ];
+		bzero(Rtemp, sizeof(double) * size);
+	}
 	dim2 = nt * nr;
 
 	write_basic_info(file);
 
-	fp = new TFile(file, "update");
-	tree = new TTree("extraction", "extraction");
+	TFile *fp = new TFile(file, "update");
+	TTree *tree = new TTree("extraction", "extraction");
 	tree->Branch("throws", &throws, "throws/I");
 	tree->Branch("status", &status, "status/I");
 	tree->Branch("dim", &nr, "dim/I");
@@ -1256,8 +1286,10 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 		tree->Branch("a", atemp, "a[dim]/D");
 		tree->Branch("b", btemp, "b[dim]/D");
 		tree->Branch("c", ctemp, "c[dim2]/D");
+		tree->Branch("R", Rtemp, "R[dim2]/D");
 		tree->Branch("cov", cov, "cov[dim2]/D");
 		tree->Branch("J", J, "J[dim2]/D");
+/* jsv TODO save Rinv too */
 	}
 
 /* put away the central value. use status = 0 */
@@ -1277,8 +1309,15 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	tree->Fill();
 
 	for(trial=0;trial<ntrials;++trial) {
-		if((trial % 100) == 0) printf("trial %d / %d\n", trial, ntrials);
+		if((trial % 1000) == 0) printf("trial %d / %d\n", trial, ntrials);
 		for(i=0;i<nr;++i) ntemp[i] = rndm->Poisson(mu[i]);
+		if(dR_options == ResponseMatrixVariationUniform) {
+			for(i=0;i<nt;++i) {
+				for(j=0;j<nr;++j) {
+					R[i][j] = R_save[i][j] * rndm->Gaus(1.0, dR_nominal);
+				}
+			}
+		}
 		bool flag = run(ytemp, ntemp, 0);
 		status = flag ? PoissonExtraction : NBiasNtupleOptions; /* success or failure */
 		throws = this->trials; /* get the number of times dice was thrown to obtain convergence */
@@ -1300,12 +1339,22 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 
 // jsv not required?	delete tree;
 
+	if(R_save) {
+		for(i=0;i<nt;++i) delete [] R[i];
+		for(i=0;i<nr;++i) delete [] Rinv[i];
+		delete [] R;
+		delete [] Rinv;
+		R = R_save;
+		Rinv = Rinv_save;
+	}
+
 	if(detail) {
 		delete [] J;
 		delete [] cov;
 		delete [] atemp;
 		delete [] btemp;
 		delete [] ctemp;
+		delete [] Rtemp;
 	}
 	delete [] mu;
 	delete [] ntemp;

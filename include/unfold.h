@@ -35,6 +35,12 @@ class Unfold {
 		NBiasNtupleOptions
 	} BiasNtupleOptions;
 
+	enum {
+		ResponseMatrixVariationNone,
+		ResponseMatrixVariationFromHistogram,
+		ResponseMatrixVariationUniform
+	} ResponseMatrixVariationOptions;
+
 	void set_seed(int seed) { this->seed = seed; };
 	int get_seed() { return seed; };
 	// void set_dimension(int N) { this->N = N; };
@@ -70,8 +76,10 @@ class Unfold {
 	double **get_response_matrix();
 	int get_n_true() { return nt; };
 	int get_n_meas() { return nr; };
-	bool statistical_analysis(double *y0, int ntrials, const char *ntuple, bool detail = true);
-	bool statistical_analysis(int ntrials, int option, const char *ntuple, bool detail = true);
+	bool statistical_analysis(double *y0, int ntrials, const char *ntuple, 
+		bool detail = false, int dR_options = ResponseMatrixVariationNone, double dR_nom = 0.0);
+	bool statistical_analysis(int ntrials, int option, const char *ntuple,
+		bool detail = false, int dR_options = ResponseMatrixVariationNone, double dR_nom = 0.0);
 	bool calculate_response(double *y, double *mu, double **R = 0);
 	bool closure_test(const char *file, const char *name);
 	bool closure_test(TH1D *h);
