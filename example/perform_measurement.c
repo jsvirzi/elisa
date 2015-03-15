@@ -15,11 +15,11 @@ double true_integral(double a, double x_lo, double x_hi) {
 }
 
 int main(int argc, char **argv) {
-	int nevts = 1000000, seed = 4357;
+	int nevts = 1000000, seed = 5743;
 	char str[1024];
 
 /* X distribution parameters */
-	double x_min = 0.0, x_max = 2.0, x_a = 7.5, x_mean = 0.95, x_width = 0.1;
+	double x_min = 0.0, x_max = 2.0, x_a = 7.5, x_mean = 0.98, x_width = 0.05;
 
 	std::string ofile, name = "x";
 
