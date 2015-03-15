@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
 	char str[1024];
 
 /* X distribution parameters */
-	double x_min = 0.0, x_max = 2.0, x_a = 7.5, x_mean = 0.95, x_width = 0.1;
+	double x_min = 0.0, x_max = 2.0, x_a = 7.5, x_mean = 0.98, x_width = 0.05;
 
 	std::string ofile("response.root");
 
@@ -48,13 +48,13 @@ int main(int argc, char **argv) {
 	int nbins_x = 10;
 
 	double x_max_generation = 1.5 * x_max;
-	TH1D *h_true_x = new TH1D("true_x", "X", nbins_x, x_min, x_max); 
-	TH1D *h_meas_x = new TH1D("meas_x", "X", nbins_x, x_min, x_max); 
+	TH1D *h_true = new TH1D("true_x", "X", nbins_x, x_min, x_max); 
+	TH1D *h_meas = new TH1D("meas_x", "X", nbins_x, x_min, x_max); 
 
 /* create and initialize response matrix */
 	ResponseMatrix *response_matrix = new ResponseMatrix("x");
-	response_matrix->set_true(h_true_x);
-	response_matrix->set_meas(h_meas_x);
+	response_matrix->set_true(h_true);
+	response_matrix->set_meas(h_meas);
 	response_matrix->initialize();
 
 	sprintf(str, "0.95 - 0.45 * TMath::Exp(-2.0 * (x - %f) / %f)", x_min, x_max - x_min);
@@ -81,8 +81,8 @@ int main(int argc, char **argv) {
    We do not attempt to unfold outside of (x_min, x_max) however */
 
 	for(int i=0;i<(nbins_x+1);++i) {
-		double a_min = h_true_x->GetXaxis()->GetBinLowEdge(i+1);
-		double a_max = (i < nbins_x) ? h_true_x->GetXaxis()->GetBinUpEdge(i+1) : x_max_generation;
+		double a_min = h_true->GetXaxis()->GetBinLowEdge(i+1);
+		double a_max = (i < nbins_x) ? h_true->GetXaxis()->GetBinUpEdge(i+1) : x_max_generation;
 		if(gun) { printf("using particle gun to generate uniform random x on (%f, %f)\n", a_min, a_max);
 		} else { printf("using truth distribution to generate random x on (%f, %f)\n", a_min, a_max); }
 		sprintf(str, "x * TMath::Exp(-%f * x)", x_a);
@@ -121,9 +121,9 @@ int main(int argc, char **argv) {
 			double r_eff = rndm->Uniform(); /* random dice to see if we pass efficiency */
 
 		/* efficiency simulation */
-			h_true_x->Fill(true_x); /* fill truth unconditionally */
+			h_true->Fill(true_x); /* fill truth unconditionally */
 			if(r_eff <= eff) { /* passed efficiency */
-				h_meas_x->Fill(meas_x);
+				h_meas->Fill(meas_x);
 				response_matrix->hit(true_x, meas_x); /* fill response matrix */
 			} else { /* failed efficiency */
 				response_matrix->miss(true_x);

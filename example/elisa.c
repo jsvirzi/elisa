@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
 		unfold->statistical_analysis(nstat, source, sfile.c_str());
 		// unfold->statistical_analysis(nstat, source, sfile.c_str(), true, Unfold::ResponseMatrixVariationUniform, 0.05);
 	}
-	if(truth) unfold->closure_test(tfile.c_str(), tname.c_str());
+	if(truth) unfold->closure_test();
 #if 0
 	unfold->write_info();
 	unfold->write();

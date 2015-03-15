@@ -100,7 +100,7 @@ Unfold::Unfold(int algorithm, const char *name) :
 	dimensions_true(0), dimensions_meas(0),
 	nbinsx_true(0), nbinsy_true(0), nbinsz_true(0),
 	nbinsx_meas(0), nbinsy_meas(0), nbinsz_meas(0),
-	h_x_true(0), h_x_meas(0), h_x_y_true(0), h_x_y_meas(0), h_x_y_z_true(0), h_x_y_z_meas(0),
+	// h_x_true(0), h_x_meas(0), h_x_y_true(0), h_x_y_meas(0), h_x_y_z_true(0), h_x_y_z_meas(0),
 	// h_efficiency(0), h_efficiency_denom(0), h_efficiency_numer(0), eff(0), deff(0), 
 	R(0), M(0), dR(0), Rinv(0), Minv(0), response(0), 
 	n(0), y(0), z(0), p(0), 
@@ -511,20 +511,26 @@ bool Unfold::set_true(TH1D *h) {
 #endif
 
 bool Unfold::set_true(TH2D *h) {
+#if 0
 	sprintf(str, "%s", str);
 	h_x_y_true = new TH2D(*h);
 	h_x_y_true->SetName(str);
 	h_x_y_true->SetDirectory(0);
 	for(int i=0;i<nt;++i) y_true[i] = h_x_y_true->GetBinContent(i);
+#endif
+	for(int i=0;i<nt;++i) y_true[i] = h->GetBinContent(i);
 	return true;
 }
 
 bool Unfold::set_true(TH3D *h) {
+#if 0
 	sprintf(str, "%s", str);
 	h_x_y_z_true = new TH3D(*h);
 	h_x_y_z_true->SetName(str);
 	h_x_y_z_true->SetDirectory(0);
 	for(int i=0;i<nt;++i) y_true[i] = h_x_y_z_true->GetBinContent(i);
+#endif
+	for(int i=0;i<nt;++i) y_true[i] = h->GetBinContent(i);
 	return true;
 }
 
@@ -636,18 +642,22 @@ printf("stop = %d. start = %d. meas uf/ov = %s/%s\n", stop, start, meas_uf ? "tr
 
 bool Unfold::set_meas(TH2D *h) {
 	sprintf(str, "%s", str);
+#if 0
 	h_x_y_meas = new TH2D(*h);
 	h_x_y_meas->SetName(str);
 	h_x_y_meas->SetDirectory(0);
+#endif
 	for(int i=0;i<nr;++i) n[i] = h->GetBinContent(i);
 	return true;
 }
 
 bool Unfold::set_meas(TH3D *h) {
+#if 0
 	sprintf(str, "%s", str);
 	h_x_y_z_meas = new TH3D(*h);
 	h_x_y_z_meas->SetName(str);
 	h_x_y_z_meas->SetDirectory(0);
+#endif
 	for(int i=0;i<nr;++i) n[i] = h->GetBinContent(i);
 	return true;
 }
@@ -720,8 +730,25 @@ bool Unfold::set_meas(const char *file, const char *name) {
 bool Unfold::run(double *y, double *n, int option) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
-		int iterations = (option > 0) ? option : this->iterations;
+		// int iterations = (option > 0) ? option : this->iterations;
+		// stat = get_bayesian_iterative_solution(y, n, iterations, guess);
+		double *guess = 0; 
+		if(option == 0) {
+			guess = new double [ nt ];
+			for(int i=0;i<nt;++i) guess[i] = 1.0;
+		} else if(option == 1) {
+			guess = new double [ nt ];
+			get_maximum_likelihood_solution(guess, n);
+		} else if(option == 2) {
+			guess = new double [ nt ];
+			for(int i=0;i<nt;++i) guess[i] = 1.0;
+		} else if(option == 3) {
+			guess = new double [ nt ];
+			for(int i=0;i<nt;i+=2) { guess[i] = 1.0; }
+			for(int i=1;i<nt;i+=2) { guess[i] = 11.0; }
+		}
 		stat = get_bayesian_iterative_solution(y, n, iterations, guess);
+		if(guess) delete [] guess;
 	} else if(algorithm == MaximumLikelihood) {
 		stat = get_maximum_likelihood_solution(y, n);
 	} else if(algorithm == Elisa) {
@@ -738,6 +765,7 @@ bool Unfold::run(double *y, double *n, int option) {
 bool Unfold::run(int option) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
+/* jsv TODO move to function */
 		double *guess = 0; 
 		if(option == 0) {
 			guess = new double [ nt ];
@@ -750,7 +778,8 @@ bool Unfold::run(int option) {
 			for(int i=0;i<nt;++i) guess[i] = 1.0;
 		} else if(option == 3) {
 			guess = new double [ nt ];
-			for(int i=0;i<nt;i+=2) { guess[i] = 1.0; guess[i+1] = 11.0; }
+			for(int i=0;i<nt;i+=2) { guess[i] = 1.0; }
+			for(int i=1;i<nt;i+=2) { guess[i] = 11.0; }
 		}
 		stat = get_bayesian_iterative_solution(y, n, iterations, guess);
 		if(guess) delete [] guess;
@@ -780,14 +809,17 @@ bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, d
 	if(guess) { for(i=0;i<nt;++i) y[i] = guess[i]; } 
 	else { for(i=0;i<nt;++i) y[i] = 1.0; }
 
-	if(guess) { 
+	if(guess && verbose) { 
 		printf("initial distribution for bayesian iteration = ...\n");
 		for(i=0;i<nt;++i) printf("bin(%d) guess = %f\n", i, y[i]);
-		getchar();
+		// if(debug) 
+		//	getchar();
 	}
 
-	printf("iters = %d\n", niters);
-	for(i=0;i<nt;++i) printf("start: y(%d) = %f\n", i, y[i]); 
+	if(verbose) {
+		printf("iters = %d\n", niters);
+		for(i=0;i<nt;++i) printf("start: y(%d) = %f\n", i, y[i]); 
+	}
 
 	for(int iter=0;iter<niters;++iter) {
 
@@ -806,7 +838,7 @@ bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, d
 
 		for(i=0;i<nr;++i) {
 			double acc = 0.0;
-			for(j=0;j<nt;++j) { acc += R[i][j] * p[j]; }
+			for(j=0;j<nt;++j) { acc += p[j] * R[j][i]; }
 			accr[i] = acc;
 		}
 
@@ -833,8 +865,7 @@ bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, d
 	}
 
 //	for(i=0;i<nt;++i) printf("final: y(%d) = %f\n", i, y[i]); 
-
-	// printf("bayesian closure weight = %f\n", bayesian_closure_weight(y, n));
+//	getchar();
 
 	delete [] eff;
 
@@ -1383,82 +1414,9 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 
 }
 
-bool Unfold::closure_test(const char *file, const char *name) {
-
-	if(dimensions_true == 1) {
-		TFile fp(file, "read");
-		TH1D *h = (TH1D *)fp.Get(name); 
-		int nx = h->GetNbinsX();
-		if(nx != nbinsx_true) { 
-			printf("mismatch in number of true bins. expected %d. found %d\n", nbinsx_true, nx);
-			return false;
-		}
-		return closure_test(h);
-#if 0
-	} else if(dimensions_true == 2) {
-		TFile fp(file, "read");
-		TH2D *h = (TH2D *)fp.Get(name); 
-		int nx = h->GetNbinsX(), ny = h->GetNbinsY();
-		if((nbinsx_true != nx) || (nbinsy_true != ny)) { 
-			printf("mismatch in number of true bins. expected (%d X %d). found (%d X %d)\n", 
-				nbinsx_true, nbinsy_true, nx, ny);
-			return false;
-		}
-		return closure_test(h);
-	} else if(dimensions_true == 3) {
-		TFile fp(file, "read");
-		TH3D *h = (TH3D *)fp.Get(name); 
-		int nx = h->GetNbinsX(), ny = h->GetNbinsY(), nz = h->GetNbinsZ();
-		if((nbinsx_true != nx) || (nbinsy_true != ny) || (nbinsz_true != nz)) { 
-			printf("mismatch in number of true bins. expected (%d X %d X %d). found (%d X %d X %d)\n", 
-				nbinsx_true, nbinsy_true, nbinsz_true, nx, ny, nz);
-			return false;
-		}
-		return closure_test(h);
-#endif
-	}
-
-	return false;
-
-}
-
-bool Unfold::closure_test(double *y) {
+double Unfold::closure_test() {
 	for(int i=0;i<nt;++i) {
-		closure_ratio[i] = (y[i] != 0.0) ? (this->y[i] / y[i]) : 0.0;
-	}
-	return true;
-}
-
-bool Unfold::closure_test(TH1D *h) {
-/* jsv what is start point? */
-	for(int i=0;i<nt;++i) {
-		int bin = i + 1;
-		double a = h->GetBinContent(bin);
-		double r = (a != 0.0) ? (y[i] / a) : 0.0;
-		closure_ratio[i] = r;
-		// printf("bin(%d) compare %f to %f. ratio = %f\n", i, y[i], a, r);
-	}
-	return true;
-}
-
-bool Unfold::closure_test(TH2D *h) {
-	for(int i=0;i<nt;++i) {
-		int bin = i + 1;
-		double a = h->GetBinContent(bin);
-		double r = (a != 0.0) ? (y[i] / a) : 0.0;
-		closure_ratio[i] = r;
-		// printf("bin(%d) compare %f to %f. ratio = %f\n", i, y[i], a, r);
-	}
-	return true;
-}
-
-bool Unfold::closure_test(TH3D *h) {
-	for(int i=0;i<nt;++i) {
-		int bin = i + 1;
-		double a = h->GetBinContent(bin);
-		double r = (a != 0.0) ? (y[i] / a) : 0.0;
-		closure_ratio[i] = r;
-		// printf("bin(%d) compare %f to %f. ratio = %f\n", i, y[i], a, r);
+		closure_ratio[i] = (y_true[i] != 0.0) ? (y[i] / y_true[i]) : 0.0;
 	}
 	return true;
 }

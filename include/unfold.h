@@ -82,11 +82,7 @@ class Unfold {
 	bool statistical_analysis(int ntrials, int option, const char *ntuple,
 		bool detail = false, int dR_options = ResponseMatrixVariationNone, double dR_nom = 0.0);
 	bool calculate_response(double *y, double *mu, double **R = 0);
-	bool closure_test(const char *file, const char *name);
-	bool closure_test(TH1D *h);
-	bool closure_test(TH2D *h);
-	bool closure_test(TH3D *h);
-	bool closure_test(double *y);
+	double closure_test();
 	bool set_iterations(int iterations) { this->iterations = iterations; };
 	bool get_efficiency(double *eff);
 
@@ -94,9 +90,9 @@ class Unfold {
 
 	bool write_basic_info(const char *ntuple);
 	bool true_uf, true_ov, meas_uf, meas_ov;
-	TH1D *h_x_true, *h_x_meas;
-	TH2D *h_x_y_true, *h_x_y_meas;
-	TH3D *h_x_y_z_true, *h_x_y_z_meas;
+	// TH1D *h_x_true, *h_x_meas;
+	// TH2D *h_x_y_true, *h_x_y_meas;
+	// TH3D *h_x_y_z_true, *h_x_y_z_meas;
 	// TH1D *h_efficiency, *h_efficiency_numer, *h_efficiency_denom;
 	int N;
 	bool initialized, verbose, debug;
