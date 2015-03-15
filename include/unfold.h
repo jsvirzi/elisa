@@ -88,6 +88,7 @@ class Unfold {
 
 	private:
 
+	double *make_guess(int option);
 	bool write_basic_info(const char *ntuple);
 	bool true_uf, true_ov, meas_uf, meas_ov;
 	// TH1D *h_x_true, *h_x_meas;

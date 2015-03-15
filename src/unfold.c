@@ -727,26 +727,29 @@ bool Unfold::set_meas(const char *file, const char *name) {
 	return false;
 }
 
+double *Unfold::make_guess(int option) {
+	double *guess = new double [ nt ];
+	if(option == 0) {
+		guess = new double [ nt ];
+		for(int i=0;i<nt;++i) guess[i] = 1.0;
+	} else if(option == 1) {
+		guess = new double [ nt ];
+		get_maximum_likelihood_solution(guess, n);
+	} else if(option == 2) {
+		guess = new double [ nt ];
+		for(int i=0;i<nt;++i) guess[i] = 1.0;
+	} else if(option == 3) {
+		guess = new double [ nt ];
+		for(int i=0;i<nt;i+=2) { guess[i] = 1.0; }
+		for(int i=1;i<nt;i+=2) { guess[i] = 11.0; }
+	}
+	return guess;
+}
+
 bool Unfold::run(double *y, double *n, int option) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
-		// int iterations = (option > 0) ? option : this->iterations;
-		// stat = get_bayesian_iterative_solution(y, n, iterations, guess);
-		double *guess = 0; 
-		if(option == 0) {
-			guess = new double [ nt ];
-			for(int i=0;i<nt;++i) guess[i] = 1.0;
-		} else if(option == 1) {
-			guess = new double [ nt ];
-			get_maximum_likelihood_solution(guess, n);
-		} else if(option == 2) {
-			guess = new double [ nt ];
-			for(int i=0;i<nt;++i) guess[i] = 1.0;
-		} else if(option == 3) {
-			guess = new double [ nt ];
-			for(int i=0;i<nt;i+=2) { guess[i] = 1.0; }
-			for(int i=1;i<nt;i+=2) { guess[i] = 11.0; }
-		}
+		double *guess = make_guess(option); 
 		stat = get_bayesian_iterative_solution(y, n, iterations, guess);
 		if(guess) delete [] guess;
 	} else if(algorithm == MaximumLikelihood) {
@@ -765,22 +768,7 @@ bool Unfold::run(double *y, double *n, int option) {
 bool Unfold::run(int option) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
-/* jsv TODO move to function */
-		double *guess = 0; 
-		if(option == 0) {
-			guess = new double [ nt ];
-			for(int i=0;i<nt;++i) guess[i] = 1.0;
-		} else if(option == 1) {
-			guess = new double [ nt ];
-			get_maximum_likelihood_solution(guess, n);
-		} else if(option == 2) {
-			guess = new double [ nt ];
-			for(int i=0;i<nt;++i) guess[i] = 1.0;
-		} else if(option == 3) {
-			guess = new double [ nt ];
-			for(int i=0;i<nt;i+=2) { guess[i] = 1.0; }
-			for(int i=1;i<nt;i+=2) { guess[i] = 11.0; }
-		}
+		double *guess = make_guess(option); 
 		stat = get_bayesian_iterative_solution(y, n, iterations, guess);
 		if(guess) delete [] guess;
 	} else if(algorithm == MaximumLikelihood) {
@@ -792,8 +780,6 @@ bool Unfold::run(int option) {
 		double *ntemp = new double [ nr ];
 		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
 		stat = get_weighted_likelihood_solution(y, ntemp);
-		// printf("bayesian closure weight = %f\n", bayesian_closure_weight(y, n));
-		// printf("bayesian closure weight = %f\n", bayesian_closure_weight(y, ntemp));
 		delete [] ntemp;
 	// jsv } else if(algorithm == WeightedMean) { stat = get_weighted_mean(y, prior, dprior);
 	}
