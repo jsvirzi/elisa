@@ -9,7 +9,7 @@ int main(int argc, char **argv) {
 	std::string name, dfile, dname, rfile, rname, tfile, tname, ofile, sfile;
 	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0;
 	double epsilon = 0.001;
-	bool cov = false, bootstrap = false, truth = false;
+	bool covariance = false, bootstrap = false, truth = false;
 
 /* defaults */
 	rfile = "example/response_matrix.root";
@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
 		} else if(strcmp("-o", argv[i]) == 0) { ofile = argv[++i];
 		} else if(strcmp("-name", argv[i]) == 0) { name = argv[++i];
 		} else if(strcmp("-bootstrap", argv[i]) == 0) { bootstrap = true;
-		} else if(strcmp("-cov", argv[i]) == 0) { cov = true;
+		} else if(strcmp("-covariance", argv[i]) == 0) { covariance = true;
 		} else if(strcmp("-epsilon", argv[i]) == 0) { epsilon = atof(argv[++i]); 
 		} else if(strcmp("-convergence", argv[i]) == 0) { 
 			max_trials = atoi(argv[++i]); 
@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
 	if(nstat) {
 		printf("evaluating statistical uncertainty with %d trials. saving to %s\n", max_trials, sfile.c_str());
 		int source = truth ? Unfold::UseTruth : Unfold::UseUnfolded;
-		unfold->statistical_analysis(nstat, source, sfile.c_str());
+		unfold->statistical_analysis(nstat, source, sfile.c_str(), covariance);
 		// unfold->statistical_analysis(nstat, source, sfile.c_str(), true, Unfold::ResponseMatrixVariationUniform, 0.05);
 	}
 	if(truth) unfold->closure_test();
@@ -120,7 +120,7 @@ return 0;
 	double *y_true = new double [ nt ];
 	double *data = new double [ nr ];
 
-	if(cov) {
+	if(covariance) {
 		printf("calculating covariance matrix...\n"); getchar();
 		unfold->jacobian(0);
 	}

@@ -119,9 +119,9 @@ Unfold::Unfold(int algorithm, const char *name) :
 	str = new char [ len + 256 ]; /* general purpose usage when manipulating name */
 
 /* convergence criteria for estimator */
-	max_trials = 100000;
+	max_trials = 1000000;
 	counter0 = 100;
-	epsilon = 0.0001;
+	epsilon = 0.00001;
 }
 
 Unfold::~Unfold() {
@@ -746,7 +746,7 @@ double *Unfold::make_guess(int option) {
 	return guess;
 }
 
-bool Unfold::run(double *y, double *n, int option) {
+bool Unfold::run(double *y, double *n, int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
 		double *guess = make_guess(option); 
@@ -755,17 +755,17 @@ bool Unfold::run(double *y, double *n, int option) {
 	} else if(algorithm == MaximumLikelihood) {
 		stat = get_maximum_likelihood_solution(y, n);
 	} else if(algorithm == Elisa) {
-		stat = get_weighted_likelihood_solution(y, n);
+		stat = get_weighted_likelihood_solution(y, n, detail);
 	} else if(algorithm == FullBayesian) {
 		double *ntemp = new double [ nr ];
 		for(int i=0;i<nr;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
-		stat = get_weighted_likelihood_solution(y, ntemp);
+		stat = get_weighted_likelihood_solution(y, ntemp, detail);
 		delete [] ntemp;
 	}
 	return stat;
 }
 
-bool Unfold::run(int option) {
+bool Unfold::run(int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
 		double *guess = make_guess(option); 
@@ -775,11 +775,11 @@ bool Unfold::run(int option) {
 		stat = get_maximum_likelihood_solution(y, n);
 		// printf("bayesian closure weight = %f\n", bayesian_closure_weight(y, n));
 	} else if(algorithm == Elisa) {
-		stat = get_weighted_likelihood_solution(y, n);
+		stat = get_weighted_likelihood_solution(y, n, detail);
 	} else if(algorithm == FullBayesian) {
 		double *ntemp = new double [ nr ];
 		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
-		stat = get_weighted_likelihood_solution(y, ntemp);
+		stat = get_weighted_likelihood_solution(y, ntemp, detail);
 		delete [] ntemp;
 	// jsv } else if(algorithm == WeightedMean) { stat = get_weighted_mean(y, prior, dprior);
 	}
@@ -859,7 +859,7 @@ bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, d
 
 }
 
-bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
+bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail) {
 	int i, j, k, trial;
 	int counter = counter0;
 	double *ytemp = new double [ nt ];
@@ -897,26 +897,28 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 
 	/* draw random mu from the PDF */
 		for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); }
-		flag = get_maximum_likelihood_solution(ytemp, mu);
+		flag = get_maximum_likelihood_solution(ytemp, mu); /* ytemp = mu X Rinv. for Theta-function test */
 		if(flag == false) continue;
 
 		// for(i=0;i<nr;++i) printf("BIN(%d) : MU = %f. Y = %f. ACC = %f\n", i, mu[i], ytemp[i], ycand[i]);
 		// getchar();
 
-		flag = false; /* assume theta-function yields 1.0 */
-		for(i=0;i<nt;++i) { if(ytemp[i] <= 0.0) { flag = true; break; } } /* theta-function yields 0.0 */
-		if(flag) continue; /* theta = 0 */
+		flag = false; /* assume theta-function yields 1 */
+		for(i=0;i<nt;++i) { if(ytemp[i] <= 0.0) { flag = true; break; } } /* Theta-function yields 0 */
+		if(flag) continue; /* Theta = 0 */
 
 		for(i=0;i<nr;++i) v[i] += mu[i];
 		a += 1.0;
 		++trial;
 
-		for(i=0;i<nr;++i) {
-			double s = mu[i];
-			double t = TMath::Log(s);
-			A[i] += s; 
-			B[i] += t;
-			for(j=0;j<nr;++j) C[j][i] += mu[j] * t; 
+		if(detail) {
+			for(i=0;i<nr;++i) {
+				double s = mu[i];
+				double t = TMath::Log(s);
+				A[i] += s; 
+				B[i] += t;
+				for(j=0;j<nr;++j) C[j][i] += mu[j] * t; 
+			}
 		}
 
 		for(j=0;j<nr;++j) {
@@ -941,12 +943,14 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 			if(counter == 0) { /* enough successive trials have converged */ 
 				printf("convergence criteria reached with %d trials!\n", trial); 
 				get_maximum_likelihood_solution(y, ycand);
-				// for(j=0;j<nt;++j) { y[j] = ycand[j]; }
-			/* jsv. is assumption about the y-convergence valid for A, B and C? */
-				for(j=0;j<nr;++j) { A[j] = A[j] / a; }
-				for(j=0;j<nr;++j) { B[j] = B[j] / a; }
-				for(i=0;i<nr;++i) { for(j=0;j<nr;++j) { C[i][j] = C[i][j] / a; } }
-				for(i=0;i<nr;++i) { for(j=0;j<nr;++j) { J[i][j] = C[i][j] - A[i] * B[j]; } }
+				// for(i=0;i<nt;++i) y[i] = ycand[i]; /* jsv */
+				if(detail) {
+				/* jsv. is assumption about the y-convergence valid for A, B and C? */
+					for(j=0;j<nr;++j) { A[j] = A[j] / a; }
+					for(j=0;j<nr;++j) { B[j] = B[j] / a; }
+					for(i=0;i<nr;++i) { for(j=0;j<nr;++j) { C[i][j] = C[i][j] / a; } }
+					for(i=0;i<nr;++i) { for(j=0;j<nr;++j) { J[i][j] = C[i][j] - A[i] * B[j]; } }
+				}
 				break;
 			}
 		}
@@ -954,17 +958,9 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 	}
 
 #if 0
-	for(j=0;j<nr;++j) { A[j] = A[j] / a; }
-	for(j=0;j<nr;++j) { B[j] = B[j] / a; }
-	for(i=0;i<nr;++i) { for(j=0;j<nr;++j) { C[i][j] = C[i][j] / a; } }
-	for(i=0;i<nr;++i) { for(j=0;j<nr;++j) { J[i][j] = C[i][j] - A[i] * B[j]; } }
-#endif
-
-#if 0
 	printf("J = \n");
 	for(i=0;i<nr;++i) {
 		for(j=0;j<nr;++j) {
-			J[i][j] = C[i][j] - A[i] * B[j];
 			printf("%5.3f ", J[i][j]);
 		}
 		printf("\n");
@@ -1008,7 +1004,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 
 	trials = trial; /* return the number of trials required for convergence */
 
-	return converge;
+	return converge && (trials < max_trials);
 
 }
 
@@ -1350,7 +1346,21 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	for(trial=0;trial<ntrials;++trial) {
 		if(progress_report_frequency && ((trial % progress_report_frequency) == 0))
 			printf("trial %d / %d\n", trial, ntrials);
+
+		calculate_response(y0, mu); /* working value of mu */
+	/* Poisson extraction on the expected value in the detector */
 		for(i=0;i<nr;++i) ntemp[i] = rndm->Poisson(mu[i]);
+
+	/* check for validity of data */
+		bool valid = true;
+		for(i=0;i<nr;++i) {
+			if(mu[i] < 0.001) {
+				valid = false;
+				break;
+			}
+		}
+		if(valid == false) continue;
+
 		if(dR_options == ResponseMatrixVariationUniform) {
 			for(i=0;i<nt;++i) {
 				for(j=0;j<nr;++j) {
@@ -1358,7 +1368,7 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 				}
 			}
 		}
-		bool flag = run(ytemp, ntemp, 0);
+		bool flag = run(ytemp, ntemp, 0, detail);
 		status = flag ? PoissonExtraction : NBiasNtupleOptions; /* success or failure */
 		throws = this->trials; /* get the number of times dice was thrown to obtain convergence */
 		if(detail) {

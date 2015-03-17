@@ -6,7 +6,7 @@ SYSLIBS = -lg2c -lm -ldl
 INCLUDES = $(ROOTINCS) $(UNFOLDINCS)
 LIBS = $(ROOTLIBS)
 
-all : lib/libUnfold.so lib/libResponseMatrix.so example/toy_response_matrix example/unfold example/perform_measurement bin/poisson_extraction
+all : lib/libUnfold.so lib/libResponseMatrix.so example/toy_response_matrix example/unfold example/perform_measurement example/poisson_extraction
 # example/unfold example/ml example/bayes bin/analyze_bias bin/poisson_extractions
 
 CFLAGS = -fPIC -Wall -c -g $(shell root-config --cflags) 
@@ -18,8 +18,8 @@ install:
 	@ echo "export UNFOLDDIR=$(PWD)" >setup.sh
 	@ echo "export LD_LIBRARY_PATH=$(LD_LIBRARY_PATH):$(PWD)/lib" >>setup.sh
 
-bin/poisson_extraction : src/poisson_extraction.c 
-	g++ example/poisson_extraction.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o bin/poisson_extraction
+example/poisson_extraction : example/poisson_extraction.c 
+	g++ example/poisson_extraction.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/poisson_extraction
 
 bin/analyze_bias : src/analyze_bias.c 
 	g++ src/analyze_bias.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o bin/analyze_bias
@@ -32,9 +32,6 @@ example/ml : example/ml.c include/unfold.h include/response_matrix.h
 
 example/perform_measurement : example/perform_measurement.c include/unfold.h include/response_matrix.h
 	g++ example/perform_measurement.c -g -O2 $(ROOTINCS) $(ROOTLIBS) -o example/perform_measurement
-
-example/unfold : example/unfold.c include/unfold.h include/response_matrix.h
-	g++ example/unfold.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/unfold
 
 example/bayes : example/bayes.c include/unfold.h include/response_matrix.h
 	g++ example/bayes.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/bayes

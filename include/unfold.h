@@ -63,9 +63,9 @@ class Unfold {
 	bool add_response_matrix(const char *file, const char *name, double weight = 1.0);
 	bool initialize_response_matrix(const char *file, const char *name, double weight = 1.0);
 	bool initialize_response_matrix();
-	bool run(double *y, double *n, int option = 0);
-	bool run(int option = 0);
-	bool get_weighted_likelihood_solution(double *y, double *n);
+	bool run(double *y, double *n, int option = 0, bool detail = false);
+	bool run(int option = 0, bool detail = false);
+	bool get_weighted_likelihood_solution(double *y, double *n, bool detail = false);
 	bool get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess);
 	TH1D **create_pdfs(double *n, int nr);
 	TH1D **create_pdfs(double **Rinv, TH1D **pdf0, int nr);
@@ -93,10 +93,6 @@ class Unfold {
 	double *make_guess(int option);
 	bool write_basic_info(const char *ntuple);
 	bool true_uf, true_ov, meas_uf, meas_ov;
-	// TH1D *h_x_true, *h_x_meas;
-	// TH2D *h_x_y_true, *h_x_y_meas;
-	// TH3D *h_x_y_z_true, *h_x_y_z_meas;
-	// TH1D *h_efficiency, *h_efficiency_numer, *h_efficiency_denom;
 	int N;
 	int progress_report_frequency; /* how often to report progress */
 	bool initialized, verbose, debug;
