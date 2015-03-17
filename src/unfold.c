@@ -100,20 +100,20 @@ Unfold::Unfold(int algorithm, const char *name) :
 	dimensions_true(0), dimensions_meas(0),
 	nbinsx_true(0), nbinsy_true(0), nbinsz_true(0),
 	nbinsx_meas(0), nbinsy_meas(0), nbinsz_meas(0),
-	// h_x_true(0), h_x_meas(0), h_x_y_true(0), h_x_y_meas(0), h_x_y_z_true(0), h_x_y_z_meas(0),
-	// h_efficiency(0), h_efficiency_denom(0), h_efficiency_numer(0), eff(0), deff(0), 
 	R(0), M(0), dR(0), Rinv(0), Minv(0), response(0), 
 	n(0), y(0), z(0), p(0), 
 	guess(0), 
 	accr(0), acct(0), mean(0), rms(0), closure_ratio(0), y_true(0), A(0), B(0), C(0), cov(0), icov(0), J(0), 
 	bias(0),
-	autosave(false), prior(0), dprior(0), n_response(0), M_init(false), seed(4357)
+	autosave(false), prior(0), dprior(0), n_response(0), seed(4357),
+	progress_report_frequency(0)
 	{
 	this->algorithm = algorithm;
 
 	rndm = new TRandom3;
 
-	int len = strlen(name);
+	int len = 0;
+	if(name) len = strlen(name);
 	this->name = new char [ len + 1 ];
 	sprintf(this->name, name);
 	str = new char [ len + 256 ]; /* general purpose usage when manipulating name */
@@ -121,7 +121,7 @@ Unfold::Unfold(int algorithm, const char *name) :
 /* convergence criteria for estimator */
 	max_trials = 100000;
 	counter0 = 100;
-	epsilon = 0.001;
+	epsilon = 0.0001;
 }
 
 Unfold::~Unfold() {
@@ -871,15 +871,15 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 	TH1D **pdf = create_pdfs(n, nr);
 	// create_pdfs(Rinv, pdf, nr); /* jsv */
 
-	printf("get_elisa(%x, %x) with NT=%d NR=%d\n", y, n, nt, nr);
+	// printf("get_elisa(%x, %x) with NT=%d NR=%d\n", y, n, nt, nr);
 
 #define JSVDEBUG 0
 // #if JSVDEBUG 
 /* write them out for now */
-	TFile fp("pdf_elisa.root", "recreate");
-	for(i=0;i<nr;++i) { pdf[i]->Write(); }
-	fp.Write();
-	fp.Close();
+	// TFile fp("pdf_elisa.root", "recreate");
+	// for(i=0;i<nr;++i) { pdf[i]->Write(); }
+	// fp.Write();
+	// fp.Close();
 // #endif
 
 	double *mu = new double [ nr ];
@@ -889,16 +889,19 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 	for(i=0;i<nt;++i) { ysave[i] = ycand[i] = 0.0; }
 	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i][j] = 0.0; } 
 	bool converge = false, flag;
-	int n_pass = 0, n_fail = 0;
 	for(trial=0;trial<max_trials;++trial) {
 
-		if((trial % 10000) == 0) verbose = true;
-		if(verbose) printf("%d pass. %d total\n", n_pass, trial);
+		if(progress_report_frequency && ((trial % progress_report_frequency) == 0)) {
+			printf("%d pass. %d total\n", trial, max_trials);
+		}
 
 	/* draw random mu from the PDF */
 		for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); }
 		flag = get_maximum_likelihood_solution(ytemp, mu);
 		if(flag == false) continue;
+
+		// for(i=0;i<nr;++i) printf("BIN(%d) : MU = %f. Y = %f. ACC = %f\n", i, mu[i], ytemp[i], ycand[i]);
+		// getchar();
 
 		flag = false; /* assume theta-function yields 1.0 */
 		for(i=0;i<nt;++i) { if(ytemp[i] <= 0.0) { flag = true; break; } } /* theta-function yields 0.0 */
@@ -937,7 +940,8 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n) {
 			--counter; /* count down */
 			if(counter == 0) { /* enough successive trials have converged */ 
 				printf("convergence criteria reached with %d trials!\n", trial); 
-				for(j=0;j<nt;++j) { y[j] = ycand[j]; }
+				get_maximum_likelihood_solution(y, ycand);
+				// for(j=0;j<nt;++j) { y[j] = ycand[j]; }
 			/* jsv. is assumption about the y-convergence valid for A, B and C? */
 				for(j=0;j<nr;++j) { A[j] = A[j] / a; }
 				for(j=0;j<nr;++j) { B[j] = B[j] / a; }
@@ -1023,7 +1027,7 @@ TH1D **Unfold::create_pdfs(double *n, int nr) {
 		width = 4.0 * sqrt(n[i] + 1.0);
 		x_min = n[i] - width;
 		x_max = n[i] + width;
-		if(x_min < 0.0) x_min = 0.0;
+		if(x_min <= 0.0) x_min = 0.01; /* jsv TODO figure if configurable. stay away from 0? */
 		h = new TH1D(s, "PDF", nbins, x_min, x_max); 
 		h->SetDirectory(0);
 		// printf("i=%d. x = (%f, %f, %f)\n", i, n[i], x_min, x_max); 
@@ -1344,7 +1348,8 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	tree->Fill();
 
 	for(trial=0;trial<ntrials;++trial) {
-		if((trial % 1000) == 0) printf("trial %d / %d\n", trial, ntrials);
+		if(progress_report_frequency && ((trial % progress_report_frequency) == 0))
+			printf("trial %d / %d\n", trial, ntrials);
 		for(i=0;i<nr;++i) ntemp[i] = rndm->Poisson(mu[i]);
 		if(dR_options == ResponseMatrixVariationUniform) {
 			for(i=0;i<nt;++i) {

@@ -12,7 +12,7 @@ class Unfold {
 
 	public:
 
-	Unfold(int algorithm, const char *name = 0);
+	Unfold(int algorithm = NAlgorithms, const char *name = 0);
 	~Unfold();
 
 	enum {
@@ -26,6 +26,7 @@ class Unfold {
 		FullBayesian,
 		BayesianIteration,
 		MaximumLikelihood,
+		NAlgorithms
 	} UnfoldingAlgorithm;
 
 	enum {
@@ -41,7 +42,7 @@ class Unfold {
 		ResponseMatrixVariationUniform
 	} ResponseMatrixVariationOptions;
 
-	void set_seed(int seed) { this->seed = seed; };
+	void set_seed(int seed) { this->seed = seed; rndm->SetSeed(seed); };
 	int get_seed() { return seed; };
 	// void set_dimension(int N) { this->N = N; };
 	bool set_true(double *true_bins, int n = 0);
@@ -85,6 +86,7 @@ class Unfold {
 	double closure_test();
 	bool set_iterations(int iterations) { this->iterations = iterations; };
 	bool get_efficiency(double *eff);
+	bool set_progress_report_frequency(int frequency) { progress_report_frequency = frequency; };
 
 	private:
 
@@ -96,6 +98,7 @@ class Unfold {
 	// TH3D *h_x_y_z_true, *h_x_y_z_meas;
 	// TH1D *h_efficiency, *h_efficiency_numer, *h_efficiency_denom;
 	int N;
+	int progress_report_frequency; /* how often to report progress */
 	bool initialized, verbose, debug;
 	int seed; /* random number seed */
 	double **R, **dR, **Rinv; /* the response matrix (and its inverse) */
@@ -119,7 +122,7 @@ class Unfold {
 	char *name, *str;
 	std::string ofile;
 	// TFile *fp;
-	bool autosave, M_init;
+	bool autosave, M_init; /* jsv what is M_init */
 	int n_response; /* counts number of files containing response matrices */
 };
 

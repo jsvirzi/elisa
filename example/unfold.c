@@ -15,8 +15,8 @@ int main(int argc, char **argv) {
 	rfile = "example/response_matrix.root";
 	rname = "x";
 	name = "unfold"; 
-	dfile = "example/measurement_1.root";
-	dname = "meas_x";
+	dfile = "example/data_1.root";
+	dname = "data";
 	tfile = "example/measurement_1.root";
 	tname = "true_x";
 	truth = true;
@@ -58,8 +58,18 @@ int main(int argc, char **argv) {
 	Unfold *unfold = 0;
 	if(algorithm < 0) { unfold = new Unfold(Unfold::Elisa, name.c_str()); } 
 	else { unfold = new Unfold(algorithm, name.c_str()); }
-	if(algorithm == Unfold::BayesianIteration) unfold->set_iterations(iterations);
-	if(seed) unfold->set_seed(seed);
+	if(algorithm == Unfold::BayesianIteration) {
+		unfold->set_iterations(iterations);
+		unfold->set_progress_report_frequency(10000); /* avoid excessive output to screen */
+	} else if(algorithm == Unfold::MaximumLikelihood) {
+		unfold->set_progress_report_frequency(10000); /* avoid excessive output to screen */
+	} else if(algorithm == Unfold::Elisa) {
+		// unfold->set_progress_report_frequency(10000); /* avoid excessive output to screen */
+	}
+	if(seed) {
+		unfold->set_seed(seed);
+		printf("seed = %d\n", seed);
+	}
 	unfold->initialize_response_matrix(rfile.c_str(), rname.c_str());
 	unfold->set_meas(dfile.c_str(), dname.c_str());
 	int i, j, k, nt = unfold->get_n_true(), nr = unfold->get_n_meas();
