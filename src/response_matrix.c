@@ -8,24 +8,99 @@
 #include "math.h"
 
 #include "response_matrix.h"
+#include <stdio.h>
 
-ResponseMatrix::ResponseMatrix(const char *name) :
+int find_bin(double a, int nbins, double *edges, bool uf = false, bool ov = false) {
+	if(a < edges[0]) return uf ? 0 : -1; 
+	if(a > edges[nbins]) return ov ? nbins - 1 : nbins;
+	for(int bin=0;bin<nbins;++bin) {
+		if(edges[bin] <= a && a < edges[bin+1]) {
+			return bin;
+		}
+	}
+	return -1;
+}
+
+ResponseMatrix::~ResponseMatrix() {
+	if(eff) delete [] eff;
+	if(eff_numer) delete [] eff_numer;
+	if(eff_denom) delete [] eff_denom;
+	if(R) {
+		for(int i=0;i<nt;++i) delete [] R[i];
+		delete [] R;
+	}
+}
+
+ResponseMatrix::ResponseMatrix(int nt, int nr) :
 	verbose(false), debug(false),
-	ov(false), uf(false),
+	eff(0), eff_numer(0), eff_denom(0),
+	nt(0), nr(0), true_dimensions(1), meas_dimensions(1),
+//	ov(false), uf(false),
+	true_bin_edges(0), meas_bin_edges(0), R(0) {
+	// true_bin_edges(0), meas_bin_edges(0), R(0), weight(1.0) {
+#if 0
 	h_x_true(0), h_x_meas(0), 
 	h_x_y_true(0), h_x_y_meas(0), 
 	h_x_y_z_true(0), h_x_y_z_meas(0),
-	h_efficiency(0), h_dim(0), response(0), dimensions(0), weight(1.0) {
+	h_efficiency(0), h_dim(0), dimensions(0)
+#endif
+//	this->name = name;
+	R = new double * [ nt ];
+	for(int i=0;i<nt;++i) R[i] = new double [ nr ];
+#if 0
 	int len = strlen(name);
 	this->name = new char [ len + 1 ];
 	sprintf(this->name, name);
 	str = new char [ len + 256 ]; /* general purpose string to manipulate name */
+#endif
 }
 
+#if 0
 bool ResponseMatrix::set_output_file(const char *file) {
 	ofile = file;
 	return true;
 }
+#endif
+
+bool ResponseMatrix::set_true(int nt, double *bin_edges) {
+	this->nt = nt;
+	if(true_bin_edges) delete [] true_bin_edges;
+	true_bin_edges = new double [ nt + 1 ];
+	for(int i=0;i<=nt;++i) true_bin_edges[i] = bin_edges[i];
+	initialize_true();
+	return true;
+}
+
+bool ResponseMatrix::set_true(int nt, double a_min, double a_max) {
+	this->nt = nt;
+	if(true_bin_edges) delete [] true_bin_edges;
+	true_bin_edges = new double [ nt + 1 ];
+	double da = (a_max - a_min) / nt;
+	for(int i=0;i<=nt;++i) true_bin_edges[i] = a_min + i * da; 
+	initialize_true();
+	return true;
+}
+
+bool ResponseMatrix::set_meas(int nr, double *bin_edges) {
+	this->nr = nr;
+	if(meas_bin_edges) delete [] meas_bin_edges;
+	meas_bin_edges = new double [ nr + 1 ];
+	for(int i=0;i<=nr;++i) meas_bin_edges[i] = bin_edges[i];
+	initialize_meas();
+	return true;
+}
+
+bool ResponseMatrix::set_meas(int nr, double a_min, double a_max) {
+	this->nr = nr;
+	if(meas_bin_edges) delete [] meas_bin_edges;
+	meas_bin_edges = new double [ nr + 1 ];
+	double da = (a_max - a_min) / nr;
+	for(int i=0;i<=nr;++i) meas_bin_edges[i] = a_min + i * da; 
+	initialize_meas();
+	return true;
+}
+
+#if 0
 
 bool ResponseMatrix::set_true(TH1D *h) {
 	sprintf(str, "response_distribution_true_%s", name);
@@ -81,7 +156,14 @@ bool ResponseMatrix::set_meas(TH3D *h) {
 	return true;
 }
 
-bool ResponseMatrix::initialize() {
+#endif
+
+bool ResponseMatrix::initialize_meas() {
+	return true;
+}
+
+bool ResponseMatrix::initialize_true() {
+#if 0
 	int nbins_true = 0, nbins_meas = 0; 
 	if(h_x_true && h_x_meas) {
 		dimensions = 1;
@@ -126,13 +208,42 @@ bool ResponseMatrix::initialize() {
 	h_efficiency_numer = new TH1D(str, "efficiency numer", nbins_true, 0.5, nbins_true + 0.5);
 	h_efficiency_numer->SetDirectory(0);
 	h_efficiency_numer->Sumw2();
+#endif
+	if(eff) delete [] eff;
+	eff = new double [ nt ];
+	if(eff_numer) delete [] eff_numer;
+	eff_numer = new double [ nt ];
+	if(eff_denom) delete [] eff_denom;
+	eff_denom = new double [ nt ];
 	return true;
 }
 
+#if 0
 bool ResponseMatrix::set_weight(double weight) {
 	this->weight = weight;
 	return true;
 }
+#endif
+
+bool ResponseMatrix::hit(double x_true, double x_meas, double weight) {
+	int bin_true = find_bin(x_true, nt, true_bin_edges, uf, ov);
+	int bin_meas = find_bin(x_meas, nr, meas_bin_edges, uf, ov);
+	if(bin_true < 0 || bin_meas < 0) return false;
+	if(bin_true >= nt || bin_meas >= nr) return false;
+	R[bin_true][bin_meas] += weight;
+	eff_denom[bin_true] += weight;
+	eff_numer[bin_true] += weight;
+	return true;
+}
+
+bool ResponseMatrix::miss(double x_true, double weight) {
+	int bin_true = find_bin(x_true, nt, true_bin_edges, uf, ov);
+	if(bin_true < 0) return false;
+	eff_denom[bin_true] += weight;
+	return true;
+}
+
+#if 0
 
 bool ResponseMatrix::hit(double x_true, double x_meas) {
 	int bin_true = h_x_true->FindBin(x_true);
@@ -202,6 +313,82 @@ ResponseMatrix::~ResponseMatrix() {
 	if(h_dim) delete h_dim;
 }
 
+#endif
+
+bool ResponseMatrix::write(std::string &ofile) {
+	for(int bin=0;bin<nt;++bin) {
+		double ad = eff_denom[bin];
+		double an = eff_numer[bin];
+		if(ad != 0.0) { eff[bin] = an / ad; }
+		else { eff[bin] = 0.0; }
+	}
+	if(ofile.length()) {
+		FILE *fp = fopen(ofile.c_str(), "w");
+		fwrite(&nt, 1, sizeof(int), fp);
+		fwrite(&nr, 1, sizeof(int), fp);
+		fwrite(true_bin_edges, nt+1, sizeof(double), fp);
+		fwrite(meas_bin_edges, nr+1, sizeof(double), fp);
+	/* write out the raw (unnormalized) response matrix */
+		for(int i=0;i<nt;++i) fwrite(R[i], nr, sizeof(double), fp);
+
+	/* truth distribution */
+		double *x = new double [ nt ];
+		for(int i=0;i<nt;++i) {
+			double acc = 0.0;
+			for(int j=0;j<nr;++j) acc += R[i][j];
+			x[i] = acc;
+		}
+		fwrite(x, nt, sizeof(double), fp);
+		delete [] x;
+
+	/* measured distribution */
+		double *y = new double [ nr ];
+		for(int j=0;j<nr;++j) {
+			double acc = 0.0;
+			for(int i=0;i<nt;++i) acc += R[i][j];
+			y[j] = acc;
+		}
+		fwrite(y, nr, sizeof(double), fp);
+		delete [] y;
+
+	/* write out the final response matrix */
+		for(int i=0;i<nt;++i) {
+			double acc = 0.0;
+			for(int j=0;j<nr;++j) acc += R[i][j];
+			for(int j=0;j<nr;++j) R[i][j] = R[i][j] * eff[i] / acc;
+			fwrite(R[i], nr, sizeof(double), fp);
+			printf("R[%d]: (eff = %f)\n", i, eff[i]);
+			for(int j=0;j<nr;++j) printf(" %f", R[i][j]);
+		}
+#if 0
+		fprintf(fp, "<response_matrix>\n");
+		fprintf(fp, "\t<true_dimensions>%d</true_dimensions>\n", true_dimensions);
+		fprintf(fp, "\t<meas_dimensions>%d</meas_dimensions>\n", meas_dimensions);
+		fprintf(fp, "\t<true_bins>%d</true_bins>\n", nt);
+		for(int bin=0;bin<nt;++bin) {
+			fprintf(fp, "\t\t<true_bin_edge>%f</true_bin_edge>\n", true_bin_edges[i]);
+		}
+		fprintf(fp, "\t<meas_bins>%d</meas_bins>\n", nt);
+		for(int bin=0;bin<nt;++bin) {
+			fprintf(fp, "\t\t<meas_bin_edge>%f</meas_bin_edge>\n", meas_bin_edges[i]);
+		}
+
+		fprintf(fp, "
+		fprintf(fp, "
+		fprintf(fp, "
+		fprintf(fp, "
+		fprintf(fp, "
+		fprintf(fp, "
+		fprintf(fp, "<efficiency>
+
+		fprintf(fp, "</response_matrix>\n"
+		fclose(fp);
+#endif
+	}
+}
+
+#if 0
+
 bool ResponseMatrix::finalize(std::string &ofile) {
 	int nbins_true = h_efficiency->GetNbinsX();
 	for(int bin=0;bin<=nbins_true;++bin) {
@@ -260,3 +447,4 @@ bool ResponseMatrix::finalize(std::string &ofile) {
 	return true;
 }
 
+#endif

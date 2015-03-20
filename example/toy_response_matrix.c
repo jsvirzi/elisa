@@ -21,9 +21,9 @@ int main(int argc, char **argv) {
 	char str[1024];
 
 /* X distribution parameters */
-	double x_min = 0.0, x_max = 2.0, x_a = 7.5, x_mean = 0.98, x_width = 0.05;
+	double x_min = 0.0, x_max = 2.4, x_a = 7.5, x_mean = 0.98, x_width = 0.05;
 
-	std::string ofile("response.root");
+	std::string ofile("response_matrix.dat");
 
 	for(int i=1;i<argc;++i) {
 		if(strcmp("-debug", argv[i]) == 0) { debug = true;
@@ -37,6 +37,8 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	double x_max_generation = 1.5 * x_max;
+
 	TRandom3 *rndm = new TRandom3(seed);
 	seed = rndm->GetSeed();
 	gRandom->SetSeed(seed);
@@ -45,17 +47,22 @@ int main(int argc, char **argv) {
 	printf("output file = %s\n", ofile.c_str());
 
 /* X */
-	int nbins_x = 10;
+	int nbins_x = 12;
 
-	double x_max_generation = 1.5 * x_max;
-	TH1D *h_true = new TH1D("true_x", "X", nbins_x, x_min, x_max); 
-	TH1D *h_meas = new TH1D("meas_x", "X", nbins_x, x_min, x_max); 
+	double *bin_edges = new double [ nbins_x + 1 ];
+	double dx = (x_max - x_min) / nbins_x;
+	for(int i=0;i<nbins_x;++i) bin_edges[i] = x_min + i * dx;
+	bin_edges[nbins_x] = x_max_generation;
+
+//	TH1D *h_true = new TH1D("true_x", "X", nbins_x, x_min, x_max); 
+//	TH1D *h_meas = new TH1D("meas_x", "X", nbins_x, x_min, x_max); 
 
 /* create and initialize response matrix */
-	ResponseMatrix *response_matrix = new ResponseMatrix("x");
-	response_matrix->set_true(h_true);
-	response_matrix->set_meas(h_meas);
-	response_matrix->initialize();
+	ResponseMatrix *response_matrix = new ResponseMatrix(nbins_x, nbins_x);
+	response_matrix->enable_underflow();
+	response_matrix->enable_overflow();
+	response_matrix->set_true(nbins_x, bin_edges);
+	response_matrix->set_meas(nbins_x, bin_edges);
 
 	sprintf(str, "0.95 - 0.45 * TMath::Exp(-2.0 * (x - %f) / %f)", x_min, x_max - x_min);
 	TF1 *fxeff = new TF1("fxeff", str, x_min, x_max);
@@ -80,9 +87,10 @@ int main(int argc, char **argv) {
    that feed into the measurement region.
    We do not attempt to unfold outside of (x_min, x_max) however */
 
-	for(int i=0;i<(nbins_x+1);++i) {
-		double a_min = h_true->GetXaxis()->GetBinLowEdge(i+1);
-		double a_max = (i < nbins_x) ? h_true->GetXaxis()->GetBinUpEdge(i+1) : x_max_generation;
+	for(int i=0;i<nbins_x;++i) {
+		double a_min = bin_edges[i], a_max = bin_edges[i+1];
+		// double a_min = h_true->GetXaxis()->GetBinLowEdge(i+1);
+		// double a_max = (i < nbins_x) ? h_true->GetXaxis()->GetBinUpEdge(i+1) : x_max_generation;
 		if(gun) { printf("using particle gun to generate uniform random x on (%f, %f)\n", a_min, a_max);
 		} else { printf("using truth distribution to generate random x on (%f, %f)\n", a_min, a_max); }
 		sprintf(str, "x * TMath::Exp(-%f * x)", x_a);
@@ -98,10 +106,8 @@ int main(int argc, char **argv) {
 		printf("slice integral of true distribution = %f for (%f, %f)\n", slice_integral, a_min, a_max);
 		printf("net weight = %g\n", weight);
 
-		response_matrix->set_weight(weight);
-
 		for(int evt=0;evt<nevts;) { /* evt incremented after successful generation */
-			if(evt && ((evt % 100000) == 0)) printf("%d / %d events processed\n", evt, nevts);
+			if(evt && ((evt % 1000000) == 0)) printf("%d / %d events processed\n", evt, nevts);
 			double true_x = gun ? rndm->Uniform(a_min, a_max) : fx->GetRandom(); /* random x on truth interval */
 			double r_res = fxres->GetRandom(); /* resolution of x */
 			double meas_x = r_res * true_x; /* reconstructed x is resolution * truth x */
@@ -121,12 +127,12 @@ int main(int argc, char **argv) {
 			double r_eff = rndm->Uniform(); /* random dice to see if we pass efficiency */
 
 		/* efficiency simulation */
-			h_true->Fill(true_x); /* fill truth unconditionally */
+			// h_true->Fill(true_x); /* fill truth unconditionally */
 			if(r_eff <= eff) { /* passed efficiency */
-				h_meas->Fill(meas_x);
-				response_matrix->hit(true_x, meas_x); /* fill response matrix */
+				// h_meas->Fill(meas_x);
+				response_matrix->hit(true_x, meas_x, weight); /* fill response matrix */
 			} else { /* failed efficiency */
-				response_matrix->miss(true_x);
+				response_matrix->miss(true_x, weight);
 			}
 
 			if(debug) {
@@ -145,7 +151,9 @@ int main(int argc, char **argv) {
 	delete fxres;
 	delete fxeff;
 
-	response_matrix->finalize(ofile);
+	delete [] bin_edges;
+
+	response_matrix->write(ofile);
 
 	return 0;
 }
