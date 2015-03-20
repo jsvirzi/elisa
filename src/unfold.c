@@ -307,7 +307,7 @@ printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "f
 		for(i=0,binx=x_start;i<nt;++i,++binx) {
 			for(j=0,biny=y_start;j<nr;++j,++biny) {
 				R[i][j] = response->GetBinContent(binx, biny);
-				printf("R[%d][%d] = %f\n", i, j, R[i][j]);
+				// printf("R[%d][%d] = %f\n", i, j, R[i][j]);
 			}
 		}
 
@@ -755,8 +755,6 @@ bool Unfold::run(double *y, double *n, int option, bool detail) {
 	} else if(algorithm == MaximumLikelihood) {
 		stat = get_maximum_likelihood_solution(y, n);
 	} else if(algorithm == Elisa) {
-		stat = get_weighted_likelihood_solution(y, n, detail);
-	} else if(algorithm == FullBayesian) {
 		double *ntemp = new double [ nr ];
 		for(int i=0;i<nr;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
 		stat = get_weighted_likelihood_solution(y, ntemp, detail);
@@ -775,13 +773,10 @@ bool Unfold::run(int option, bool detail) {
 		stat = get_maximum_likelihood_solution(y, n);
 		// printf("bayesian closure weight = %f\n", bayesian_closure_weight(y, n));
 	} else if(algorithm == Elisa) {
-		stat = get_weighted_likelihood_solution(y, n, detail);
-	} else if(algorithm == FullBayesian) {
 		double *ntemp = new double [ nr ];
 		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
 		stat = get_weighted_likelihood_solution(y, ntemp, detail);
 		delete [] ntemp;
-	// jsv } else if(algorithm == WeightedMean) { stat = get_weighted_mean(y, prior, dprior);
 	}
 	return stat;
 }
@@ -1351,10 +1346,10 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	/* Poisson extraction on the expected value in the detector */
 		for(i=0;i<nr;++i) ntemp[i] = rndm->Poisson(mu[i]);
 
-	/* check for validity of data */
+	/* check for validity of "input" data. it must be at least 1, definitely not 0 */
 		bool valid = true;
 		for(i=0;i<nr;++i) {
-			if(mu[i] < 0.001) {
+			if(mu[i] < 0.001) { /* some token amount above zero */
 				valid = false;
 				break;
 			}
