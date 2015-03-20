@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
 	char str[1024];
 
 /* X distribution parameters */
-	double x_min = 0.0, x_max = 2.0, x_a = 7.5, x_mean = 0.98, x_width = 0.05;
+	double x_min = 0.0, x_max = 2.2, x_a = 7.5, x_mean = 0.98, x_width = 0.05;
 
 	std::string ofile, name = "x";
 
@@ -45,9 +45,9 @@ int main(int argc, char **argv) {
 	TFile *fp = new TFile(ofile.c_str(), "update");
 
 /* X */
-	int nbins_x = 10;
+	int nbins_x = 11;
 
-	double x_max_generation = 1.5 * x_max;
+	double x_max_generation = 3.6; /* matches the parameter in response matrix generation */
 	TH1D *h_true = new TH1D("true_x", "X", nbins_x, x_min, x_max); 
 	TH1D *h_meas = new TH1D("meas_x", "X", nbins_x, x_min, x_max); 
 
