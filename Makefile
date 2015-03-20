@@ -4,7 +4,7 @@ UNFOLDLIBS = -L$(UNFOLDDIR)/lib -lResponseMatrix -lUnfold
 UNFOLDINCS = -I$(UNFOLDDIR)/include
 SYSLIBS = -lg2c -lm -ldl
 INCLUDES = $(ROOTINCS) $(UNFOLDINCS)
-LIBS = $(ROOTLIBS)
+LIBS = $(ROOTLIBS) $(UNFOLDLIBS)
 
 all : lib/libUnfold.so lib/libResponseMatrix.so example/toy_response_matrix example/unfold example/perform_measurement example/poisson_extraction
 # example/unfold example/ml example/bayes bin/analyze_bias bin/poisson_extractions
@@ -31,7 +31,7 @@ example/ml : example/ml.c include/unfold.h include/response_matrix.h
 	g++ example/ml.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/ml
 
 example/perform_measurement : example/perform_measurement.c include/unfold.h include/response_matrix.h
-	g++ example/perform_measurement.c -g -O2 $(ROOTINCS) $(ROOTLIBS) -o example/perform_measurement
+	g++ example/perform_measurement.c -g -O2 $(INCLUDES) $(LIBS) -o example/perform_measurement
 
 example/bayes : example/bayes.c include/unfold.h include/response_matrix.h
 	g++ example/bayes.c -g -O2 $(INCLUDES) $(UNFOLDINCS) $(LIBS) $(UNFOLDLIBS) -o example/bayes

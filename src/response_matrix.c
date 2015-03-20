@@ -25,10 +25,21 @@ ResponseMatrix::~ResponseMatrix() {
 	if(eff) delete [] eff;
 	if(eff_numer) delete [] eff_numer;
 	if(eff_denom) delete [] eff_denom;
+	if(true_bin_edges) delete [] true_bin_edges;
+	if(meas_bin_edges) delete [] meas_bin_edges;
 	if(R) {
-		for(int i=0;i<nt;++i) delete [] R[i];
-		delete [] R;
+		// for(int i=0;i<nt;++i) delete [] R[i];
+		// delete [] R;
 	}
+}
+
+bool ResponseMatrix::get_response_matrix(double **R) {
+	for(int i=0;i<nt;++i) {
+		for(int j=0;j<nr;++j) {
+			R[i][j] = this->R[i][j];
+		}
+	}
+	return true;
 }
 
 ResponseMatrix::ResponseMatrix(int nt, int nr) :
@@ -61,6 +72,16 @@ bool ResponseMatrix::set_output_file(const char *file) {
 	return true;
 }
 #endif
+
+bool ResponseMatrix::print() {
+	printf("Response Matrix (%d X %d) = ", nt, nr);
+	for(int i=0;i<nt;++i) {
+		printf("\nROW(%d) = ", i);
+		for(int j=0;j<nr;++j) printf("%f ", R[i][j]);
+	}
+	printf("\n"); 
+	return true;
+}
 
 bool ResponseMatrix::set_true(int nt, double *bin_edges) {
 	this->nt = nt;
@@ -360,6 +381,7 @@ bool ResponseMatrix::write(std::string &ofile) {
 			printf("R[%d]: (eff = %f)\n", i, eff[i]);
 			for(int j=0;j<nr;++j) printf(" %f", R[i][j]);
 		}
+		fclose(fp);
 #if 0
 		fprintf(fp, "<response_matrix>\n");
 		fprintf(fp, "\t<true_dimensions>%d</true_dimensions>\n", true_dimensions);
@@ -373,18 +395,35 @@ bool ResponseMatrix::write(std::string &ofile) {
 			fprintf(fp, "\t\t<meas_bin_edge>%f</meas_bin_edge>\n", meas_bin_edges[i]);
 		}
 
-		fprintf(fp, "
-		fprintf(fp, "
-		fprintf(fp, "
-		fprintf(fp, "
-		fprintf(fp, "
-		fprintf(fp, "
-		fprintf(fp, "<efficiency>
-
 		fprintf(fp, "</response_matrix>\n"
-		fclose(fp);
 #endif
 	}
+}
+
+ResponseMatrix::ResponseMatrix(const char *file) {
+	int i;
+	FILE *fp = fopen(file, "r");
+	printf("opening file [%s]\n", file);
+	if(fp == NULL) { printf("blah\n"); return; }
+	fread(&nt, 1, sizeof(int), fp);
+	fread(&nr, 1, sizeof(int), fp);
+printf("nt = %d. nr = %d. sizeof(int) = %d\n", nt, nr, sizeof(int));
+	R = new double * [ nt ];
+	for(i=0;i<nt;++i) R[i] = new double [ nr ];
+	true_bin_edges = new double [ nt ];
+	meas_bin_edges = new double [ nr ];
+	fread(true_bin_edges, nt+1, sizeof(double), fp);
+	fread(meas_bin_edges, nr+1, sizeof(double), fp);
+	/* read in the raw (unnormalized) response matrix. not useful for the moment */
+	for(i=0;i<nt;++i) fread(R[i], nr, sizeof(double), fp);
+	double *x = new double [ nt ];
+	fread(x, nt, sizeof(double), fp);
+	delete [] x;
+	double *y = new double [ nr ];
+	fread(y, nr, sizeof(double), fp);
+	delete [] y;
+	for(i=0;i<nt;++i) fread(R[i], nr, sizeof(double), fp);
+	fclose(fp);
 }
 
 #if 0

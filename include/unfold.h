@@ -61,8 +61,8 @@ class Unfold {
 	bool miss(double xtrue);
 	bool save(const char *filename, int mode = 0);
 	bool add_response_matrix(const char *file, const char *name, double weight = 1.0);
-	bool initialize_response_matrix(const char *file, const char *name, double weight = 1.0);
-	bool initialize_response_matrix();
+	// bool initialize_response_matrix(const char *file, const char *name, double weight = 1.0);
+	bool initialize_response_matrix(const char *file);
 	bool run(double *y, double *n, int option = 0, bool detail = false);
 	bool run(int option = 0, bool detail = false);
 	bool get_weighted_likelihood_solution(double *y, double *n, bool detail = false);

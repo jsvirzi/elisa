@@ -210,145 +210,37 @@ bool Unfold::add_response_matrix(const char *file, const char *name, double weig
 	return true;
 }
 
+#if 0
+
 bool Unfold::initialize_response_matrix(const char *file, const char *name, double weight) {
 	if(add_response_matrix(file, name, weight) == false) return false;
 	return initialize_response_matrix();
 }
 
+#endif
+
 /* after reading in and adding all the response matrices, we need to perform a few more steps before
  * we are ready */
-bool Unfold::initialize_response_matrix(void) {
+bool Unfold::initialize_response_matrix(const char *file) {
 
-	int i, j, binx, biny;
+	int i, j;
 
-	int nx = response->GetNbinsX(), ny = response->GetNbinsY();
+	ResponseMatrix *response = new ResponseMatrix(file);
 
-printf("jsv. nx = %d. ny = %d\n", nx, ny);
+	nt = response->get_nt();
+	nr = response->get_nr();
+	R = new double * [ nt ];
+	for(i=0;i<nt;++i) R[i] = new double [ nr ];
 
-#if 0
-	int nt_expected = 0;
-	if(dimensions_true == 1) {
-		nt_expected = (nbinsx_true + ((ov ? 1 : 0) + (uf ? 1 : 0)));
-	} else if(dimensions_true == 2) {
-		nt_expected = (nbinsx_true + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_true + ((ov ? 1 : 0) + (uf ? 1 : 0)));
-	} else if(dimensions_true == 3) {
-		nt_expected = (nbinsx_true + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_true + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsz_true + ((ov ? 1 : 0) + (uf ? 1 : 0)));
-	}
-	if(nt != nt_expected) { printf("mismatch in expected(%d) bins for TRUE(%d)\n", nt_expected, nt); return false; }
-
-	int nr_expected = 0;
-	if(dimensions_meas == 1) {
-		nr_expected = (nbinsx_meas + ((ov ? 1 : 0) + (uf ? 1 : 0)));
-	} else if(dimensions_meas == 2) {
-		nr_expected = (nbinsx_meas + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_meas + ((ov ? 1 : 0) + (uf ? 1 : 0)));
-	} else if(dimensions_meas == 3) {
-		nr_expected = (nbinsx_meas + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_meas + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsz_meas + ((ov ? 1 : 0) + (uf ? 1 : 0)));
-	}
-	if(nr != nr_expected) { printf("mismatch in expected(%d) bins for RECO(%d)\n", nr_expected, nr); return false; }
-
-printf("jsv. expected %d %d\n", nt_expected, nr_expected);
-
-#endif
-	// if(overflow == false) { nt -= 2; nr -= 2; }
-
-/* TRUE: if any underflow bins are detected as != 0.0, then underflow bins are to be used */
-	true_uf = false, true_ov = false;
-	for(i=0;i<=(nx+1);++i) {
-		if(response->GetBinContent(i, 0) != 0.0) { 
-			true_uf = true;
-			break;
-		}
-	}
-
-/* if any overflow bins are detected as != 0.0, then overflow bins are to be used */
-	for(i=0;i<=(nx+1);++i) {
-		if(response->GetBinContent(i, ny+1) != 0.0) {
-			true_ov = true;
-			break;
-		}
-	}
-	nt = nx + (true_uf ? 1 : 0) + (true_ov ? 1 : 0);
-printf("TRUE: UF=%s. OV=%s\n", true_uf ? "true" : "false", true_ov ? "true" : "false");
-
-/* MEAS: if any underflow bins are detected as != 0.0, then underflow bins are to be used */
-	meas_uf = false, meas_ov = false;
-	for(i=0;i<=(ny+1);++i) {
-		if(response->GetBinContent(0, i) != 0.0) { 
-			meas_uf = true;
-			break;
-		}
-	}
-
-/* if any overflow bins are detected as != 0.0, then overflow bins are to be used */
-	for(i=0;i<=(ny+1);++i) {
-		if(response->GetBinContent(nx+1, i) != 0.0) { 
-			meas_ov = true;
-			break;
-		}
-	}
-	nr = ny + (meas_uf ? 1 : 0) + (meas_ov ? 1 : 0);
-printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "false");
+	response->get_response_matrix(R);
 
 	M = new double * [ nt ];
-	R = new double * [ nt ];
 	dR = new double * [ nt ];
 	// eff = new double [ nt ];
 	// deff = new double [ nt ];
 	for(i=0;i<nt;++i) M[i] = new double [ nr ];
-	for(i=0;i<nt;++i) R[i] = new double [ nr ];
 	for(i=0;i<nt;++i) dR[i] = new double [ nr ];
-	for(i=0;i<nt;++i) { for(j=0;j<nr;++j) R[i][j] = M[i][j] = 0.0; }
-
-	int x_start = true_uf ? 0 : 1;
-	int y_start = meas_uf ? 0 : 1;
-
-	if(n_response == 1) {
-
-		for(i=0,binx=x_start;i<nt;++i,++binx) {
-			for(j=0,biny=y_start;j<nr;++j,++biny) {
-				R[i][j] = response->GetBinContent(binx, biny);
-				// printf("R[%d][%d] = %f\n", i, j, R[i][j]);
-			}
-		}
-
-#if 0
-/* jsv add support for multiple response matrices */
-	} else if(n_response != 1) {
-
-		// int start = uf ? 2 : 1;
-		for(i=0,binx=start;i<nt;++i,++binx) {
-			double ad = h_efficiency_denom->GetBinContent(binx);
-			double an = h_efficiency_numer->GetBinContent(binx);
-			double ed = h_efficiency_denom->GetBinError(binx);
-			double en = h_efficiency_numer->GetBinError(binx);
-			eff[i] = deff[i] = 0.0; 
-			if(ad != 0.0 && an != 0.0) { /* more or less normal */ 
-				eff[i] = an / ad;
-				deff[i] = eff[i] * sqrt(pow(en/an,2.0)+pow(ed/ad,2.0));
-			}
-			printf("efficiency(bin=%d) = %f +/- %f\n", binx, eff[i], deff[i]);
-		}
-
-
-		for(j=0,biny=start;j<nt;++j,++biny) {
-			double acc = 0.0;
-			double a = h_efficiency_denom->GetBinContent(biny);
-			for(i=0,binx=start;i<nr;++i,++binx) {
-				R[i][j] = response->GetBinContent(binx, biny);
-				printf("R[%d][%d] = %f\n", i, j, R[i][j]);
-				acc += R[i][j];
-				dR[i][j] = response->GetBinError(binx, biny);
-			}
-			for(i=0;i<nr;++i) { R[i][j] /= a; }
-			double old_eff = eff[j];
-			eff[j] = 0.0;
-			for(i=0;i<nr;++i) { eff[j] += R[i][j]; }
-			printf("compare(%d->%d) effs = (%f, %f). diff = %f\n", j, biny, old_eff, eff[j], eff[j] / old_eff);
-			
-		}
-#endif
-
-	}
+	for(i=0;i<nt;++i) { for(j=0;j<nr;++j) M[i][j] = 0.0; }
 
 /* the inverse response matrix */
 	Rinv = new double * [ nr ];
@@ -397,10 +289,6 @@ printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "f
 
 	for(j=0;j<nr;++j) n[j] = accr[i] = 0.0; 
 
-	printf("inverting %d X %d matrix...\n", nt, nt);
-	bool stat = find_inverse(R, Rinv, nt);
-	printf("matrix inversion complete...\n");
-
 	printf("Response Matrix = ");
 	for(i=0;i<nt;++i) {
 		printf("\nROW(%d) = ", i);
@@ -409,7 +297,12 @@ printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "f
 		}
 	}
 	printf("\n");
-//	getchar();
+
+	printf("inverting %d X %d matrix...\n", nt, nt);
+	bool stat = find_inverse(R, Rinv, nt);
+	printf("matrix inversion complete...\n");
+
+	delete response;
 
 	return stat;
 }
@@ -484,6 +377,8 @@ bool Unfold::set_true(TH1D *h) {
 	// h_x_true->SetName(str);
 	// h_x_true->SetDirectory(0);
 	int nbins = h->GetNbinsX();
+	if(h->GetBinContent(0) != 0.0) true_uf = true;
+	if(h->GetBinContent(nbins+1) != 0.0) true_ov = true;
 	int start = true_uf ? 0 : 1;
 	int stop = true_ov ? (nbins + 1) : nbins;
 printf("stop = %d. start = %d. true uf/ov = %s/%s\n", stop, start, true_uf ? "true" : "false", true_ov ? "true" : "false");
@@ -626,6 +521,8 @@ bool Unfold::set_meas(TH1D *h) {
 	// h_x_meas->SetName(str);
 	// h_x_meas->SetDirectory(0);
 	int nbins = h->GetNbinsX();
+	if(h->GetBinContent(0) != 0.0) meas_uf = true;
+	if(h->GetBinContent(nbins+1) != 0.0) meas_ov = true;
 	int start = meas_uf ? 0 : 1;
 	int stop = meas_ov ? (nbins + 1) : nbins;
 printf("stop = %d. start = %d. meas uf/ov = %s/%s\n", stop, start, meas_uf ? "true" : "false", meas_ov ? "true" : "false");
@@ -1005,7 +902,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 
 TH1D **Unfold::create_pdfs(double *n, int nr) {
 
-	printf("creating PDFs\n");
+	// printf("creating PDFs\n");
 /* create PDFs for random number generation */
 	char s[1024];
 	int i, j, bin, nbins = 250;
@@ -1042,7 +939,7 @@ TH1D **Unfold::create_pdfs(double *n, int nr) {
 
 	delete [] a;
 
-	printf("PDF creation complete\n");
+	// printf("PDF creation complete\n");
 
 	return pdf;
 
@@ -1416,4 +1313,207 @@ double Unfold::closure_test() {
 	}
 	return true;
 }
+
+#if 0
+
+/* after reading in and adding all the response matrices, we need to perform a few more steps before
+ * we are ready */
+bool Unfold::initialize_response_matrix(void) {
+
+	int i, j, binx, biny;
+
+	int nx = response->GetNbinsX(), ny = response->GetNbinsY();
+
+printf("jsv. nx = %d. ny = %d\n", nx, ny);
+
+#if 0
+	int nt_expected = 0;
+	if(dimensions_true == 1) {
+		nt_expected = (nbinsx_true + ((ov ? 1 : 0) + (uf ? 1 : 0)));
+	} else if(dimensions_true == 2) {
+		nt_expected = (nbinsx_true + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_true + ((ov ? 1 : 0) + (uf ? 1 : 0)));
+	} else if(dimensions_true == 3) {
+		nt_expected = (nbinsx_true + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_true + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsz_true + ((ov ? 1 : 0) + (uf ? 1 : 0)));
+	}
+	if(nt != nt_expected) { printf("mismatch in expected(%d) bins for TRUE(%d)\n", nt_expected, nt); return false; }
+
+	int nr_expected = 0;
+	if(dimensions_meas == 1) {
+		nr_expected = (nbinsx_meas + ((ov ? 1 : 0) + (uf ? 1 : 0)));
+	} else if(dimensions_meas == 2) {
+		nr_expected = (nbinsx_meas + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_meas + ((ov ? 1 : 0) + (uf ? 1 : 0)));
+	} else if(dimensions_meas == 3) {
+		nr_expected = (nbinsx_meas + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsy_meas + ((ov ? 1 : 0) + (uf ? 1 : 0))) * (nbinsz_meas + ((ov ? 1 : 0) + (uf ? 1 : 0)));
+	}
+	if(nr != nr_expected) { printf("mismatch in expected(%d) bins for RECO(%d)\n", nr_expected, nr); return false; }
+
+printf("jsv. expected %d %d\n", nt_expected, nr_expected);
+
+#endif
+	// if(overflow == false) { nt -= 2; nr -= 2; }
+
+/* TRUE: if any underflow bins are detected as != 0.0, then underflow bins are to be used */
+	true_uf = false, true_ov = false;
+	for(i=0;i<=(nx+1);++i) {
+		if(response->GetBinContent(i, 0) != 0.0) { 
+			true_uf = true;
+			break;
+		}
+	}
+
+/* if any overflow bins are detected as != 0.0, then overflow bins are to be used */
+	for(i=0;i<=(nx+1);++i) {
+		if(response->GetBinContent(i, ny+1) != 0.0) {
+			true_ov = true;
+			break;
+		}
+	}
+	nt = nx + (true_uf ? 1 : 0) + (true_ov ? 1 : 0);
+printf("TRUE: UF=%s. OV=%s\n", true_uf ? "true" : "false", true_ov ? "true" : "false");
+
+/* MEAS: if any underflow bins are detected as != 0.0, then underflow bins are to be used */
+	meas_uf = false, meas_ov = false;
+	for(i=0;i<=(ny+1);++i) {
+		if(response->GetBinContent(0, i) != 0.0) { 
+			meas_uf = true;
+			break;
+		}
+	}
+
+/* if any overflow bins are detected as != 0.0, then overflow bins are to be used */
+	for(i=0;i<=(ny+1);++i) {
+		if(response->GetBinContent(nx+1, i) != 0.0) { 
+			meas_ov = true;
+			break;
+		}
+	}
+	nr = ny + (meas_uf ? 1 : 0) + (meas_ov ? 1 : 0);
+printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "false");
+
+	M = new double * [ nt ];
+	R = new double * [ nt ];
+	dR = new double * [ nt ];
+	// eff = new double [ nt ];
+	// deff = new double [ nt ];
+	for(i=0;i<nt;++i) M[i] = new double [ nr ];
+	for(i=0;i<nt;++i) R[i] = new double [ nr ];
+	for(i=0;i<nt;++i) dR[i] = new double [ nr ];
+	for(i=0;i<nt;++i) { for(j=0;j<nr;++j) R[i][j] = M[i][j] = 0.0; }
+
+	int x_start = true_uf ? 0 : 1;
+	int y_start = meas_uf ? 0 : 1;
+
+	if(n_response == 1) {
+
+		for(i=0,binx=x_start;i<nt;++i,++binx) {
+			for(j=0,biny=y_start;j<nr;++j,++biny) {
+				R[i][j] = response->GetBinContent(binx, biny);
+				// printf("R[%d][%d] = %f\n", i, j, R[i][j]);
+			}
+		}
+
+#if 0
+/* jsv add support for multiple response matrices */
+	} else if(n_response != 1) {
+
+		// int start = uf ? 2 : 1;
+		for(i=0,binx=start;i<nt;++i,++binx) {
+			double ad = h_efficiency_denom->GetBinContent(binx);
+			double an = h_efficiency_numer->GetBinContent(binx);
+			double ed = h_efficiency_denom->GetBinError(binx);
+			double en = h_efficiency_numer->GetBinError(binx);
+			eff[i] = deff[i] = 0.0; 
+			if(ad != 0.0 && an != 0.0) { /* more or less normal */ 
+				eff[i] = an / ad;
+				deff[i] = eff[i] * sqrt(pow(en/an,2.0)+pow(ed/ad,2.0));
+			}
+			printf("efficiency(bin=%d) = %f +/- %f\n", binx, eff[i], deff[i]);
+		}
+
+
+		for(j=0,biny=start;j<nt;++j,++biny) {
+			double acc = 0.0;
+			double a = h_efficiency_denom->GetBinContent(biny);
+			for(i=0,binx=start;i<nr;++i,++binx) {
+				R[i][j] = response->GetBinContent(binx, biny);
+				printf("R[%d][%d] = %f\n", i, j, R[i][j]);
+				acc += R[i][j];
+				dR[i][j] = response->GetBinError(binx, biny);
+			}
+			for(i=0;i<nr;++i) { R[i][j] /= a; }
+			double old_eff = eff[j];
+			eff[j] = 0.0;
+			for(i=0;i<nr;++i) { eff[j] += R[i][j]; }
+			printf("compare(%d->%d) effs = (%f, %f). diff = %f\n", j, biny, old_eff, eff[j], eff[j] / old_eff);
+			
+		}
+#endif
+
+	}
+
+/* the inverse response matrix */
+	Rinv = new double * [ nr ];
+	for(i=0;i<nr;++i) Rinv[i] = new double [ nt ];
+	for(i=0;i<nt;++i) { for(j=0;j<nr;++j) Rinv[i][j] = 0.0; }
+
+	Minv = new double * [ nr ];
+	for(i=0;i<nr;++i) Minv[i] = new double [ nt ];
+	for(i=0;i<nt;++i) { for(j=0;j<nr;++j) Minv[i][j] = 0.0; }
+
+	y = new double [ nt ]; /* the solution */
+	n = new double [ nr ]; /* the data */
+	mean = new double [ nt ];
+	rms = new double [ nt ];
+	bias = new double [ nt ];
+
+/* intermediate variables */
+	p = new double [ nt ];
+	accr = new double [ nr ];
+	acct = new double [ nt ];
+	z = new double [ nt ];
+	guess = new double [ nt ]; /* the initial guess */
+	prior = new double [ nt ]; /* the initial guess */
+	dprior = new double [ nt ]; /* the initial guess */
+	y_true = new double [ nt ]; 
+	closure_ratio = new double [ nt ];
+	A = new double [ nr ];
+	B = new double [ nr ];
+	C = new double * [ nr ];
+	J = new double * [ nr ];
+	cov = new double * [ nr ];
+	icov = new double * [ nr ];
+
+	for(i=0;i<nr;++i) C[i] = new double [ nr ];
+	for(i=0;i<nr;++i) J[i] = new double [ nr ];
+	for(i=0;i<nr;++i) cov[i] = new double [ nr ];
+	for(i=0;i<nr;++i) icov[i] = new double [ nr ];
+
+/*** initialize arrays ***/
+	for(i=0;i<nr;++i) { for(j=0;j<nr;++j) J[i][j] = C[i][j] = cov[i][j] = icov[i][j] = 0.0; }
+	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; icov[i][i] = 1.0; } /* default is diag(1,1,1,...,1) for covariance matrix */
+
+	for(i=0;i<nt;++i) {
+		y[i] = acct[i] = z[i] = mean[i] = rms[i] = closure_ratio[i] = y_true[i] = bias[i] = 0.0;
+	}
+
+	for(j=0;j<nr;++j) n[j] = accr[i] = 0.0; 
+
+	printf("inverting %d X %d matrix...\n", nt, nt);
+	bool stat = find_inverse(R, Rinv, nt);
+	printf("matrix inversion complete...\n");
+
+	printf("Response Matrix = ");
+	for(i=0;i<nt;++i) {
+		printf("\nROW(%d) = ", i);
+		for(j=0;j<nr;++j) {
+			printf("%6.3f ", R[i][j]);
+		}
+	}
+	printf("\n");
+//	getchar();
+
+	return stat;
+}
+
+#endif
 

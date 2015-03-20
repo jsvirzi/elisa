@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
 	char str[1024];
 
 /* X distribution parameters */
-	double x_min = 0.0, x_max = 2.4, x_a = 7.5, x_mean = 0.98, x_width = 0.05;
+	double x_min = 0.0, x_max = 2.4, x_a = 7.5, x_mean = 0.98, x_width = 0.04;
 
 	std::string ofile("response_matrix.dat");
 

@@ -6,18 +6,17 @@ bool debug = false, verbose = false;
 
 int main(int argc, char **argv) {
 
-	std::string name, dfile, dname, rfile, rname, tfile, tname, ofile, sfile;
+	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile;
 	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0;
 	double epsilon = 0.001;
 	bool covariance = false, bootstrap = false, truth = false;
 
 /* defaults */
-	rfile = "example/response_matrix.root";
-	rname = "x";
+	rfile = "example/response_matrix.dat";
 	name = "unfold"; 
-	dfile = "example/data_1.root";
-	dname = "data";
-	tfile = "example/measurement_1.root";
+	dfile = "example/measurement.root";
+	dname = "meas_x";
+	tfile = "example/measurement.root";
 	tname = "true_x";
 	truth = true;
 
@@ -28,7 +27,7 @@ int main(int argc, char **argv) {
 	for(int i=1;i<argc;++i) {
 		if(strcmp("-debug", argv[i]) == 0) { debug = true;
 		} else if(strcmp("-verbose", argv[i]) == 0) { verbose = true;
-		} else if(strcmp("-r", argv[i]) == 0) { rfile = argv[++i]; rname = argv[++i]; /* response matrix */
+		} else if(strcmp("-r", argv[i]) == 0) { rfile = argv[++i]; /* response matrix */
 		} else if(strcmp("-meas", argv[i]) == 0) { dfile = argv[++i]; dname = argv[++i]; /* the data */
 		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; truth = true; 
 		} else if(strcmp("-trials", argv[i]) == 0) { max_trials = atoi(argv[++i]); 
@@ -70,7 +69,9 @@ int main(int argc, char **argv) {
 		unfold->set_seed(seed);
 		printf("seed = %d\n", seed);
 	}
-	unfold->initialize_response_matrix(rfile.c_str(), rname.c_str());
+printf("HELLO\n");
+	unfold->initialize_response_matrix(rfile.c_str());
+printf("HELLO\n");
 	unfold->set_meas(dfile.c_str(), dname.c_str());
 	int i, j, k, nt = unfold->get_n_true(), nr = unfold->get_n_meas();
 	if(bootstrap) unfold->bootstrap(); /* create new sample bootstrapped from input sample */

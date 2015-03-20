@@ -13,6 +13,7 @@
 class ResponseMatrix {
 	public:
 	ResponseMatrix(int nt, int nr);
+	ResponseMatrix(const char *file);
 	~ResponseMatrix();
 	bool hit(double x_true, double x_meas, double weight);
 	bool hit(double x_true, double y_true, double x_meas, double y_meas, double weight);
@@ -24,6 +25,10 @@ class ResponseMatrix {
 	bool set_true(int nt, double a_min, double a_max);
 	bool set_meas(int nr, double *bin_edges);
 	bool set_meas(int nt, double a_min, double a_max);
+	bool get_response_matrix(double **R);
+	int get_nt() { return nt; }
+	int get_nr() { return nr; }
+	bool print();
 #if 0
 	bool set_true(TH1D *h);
 	bool set_meas(TH1D *h);
