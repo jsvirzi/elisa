@@ -53,13 +53,13 @@ int main(int argc, char **argv) {
 
 	sprintf(str, "x * TMath::Exp(-%f * x)", x_a);
 	TF1 *fx = new TF1("fx", str, x_min, x_max_generation); 
-
 	for(int evt=0;evt<nevts;) { /* evt incremented after successful generation */
 		if(evt && ((evt % 100000) == 0)) printf("%d / %d events processed\n", evt, nevts);
 		double true_x = fx->GetRandom(); /* random x on truth interval */
 		h_true->Fill(true_x); /* fill truth unconditionally */
 		++evt;
 	}
+	delete fx;
 
 	ResponseMatrix *response = new ResponseMatrix(rfile.c_str());
 	int nt = response->get_nt(), nr = response->get_nr(); 
@@ -88,8 +88,6 @@ int main(int argc, char **argv) {
 	fp->Write();
 	fp->Close();
 	delete fp;
-
-	delete fx;
 
 	return 0;
 }

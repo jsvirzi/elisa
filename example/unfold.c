@@ -16,9 +16,9 @@ int main(int argc, char **argv) {
 	name = "unfold"; 
 	dfile = "example/measurement.root";
 	dname = "meas_x";
-	tfile = "example/measurement.root";
-	tname = "true_x";
-	truth = true;
+	// tfile = "example/measurement.root";
+	// tname = "true_x";
+	// truth = true;
 
 	algorithm = Unfold::MaximumLikelihood;
 	algorithm = Unfold::BayesianIteration;
@@ -69,9 +69,7 @@ int main(int argc, char **argv) {
 		unfold->set_seed(seed);
 		printf("seed = %d\n", seed);
 	}
-printf("HELLO\n");
 	unfold->initialize_response_matrix(rfile.c_str());
-printf("HELLO\n");
 	unfold->set_meas(dfile.c_str(), dname.c_str());
 	int i, j, k, nt = unfold->get_n_true(), nr = unfold->get_n_meas();
 	if(bootstrap) unfold->bootstrap(); /* create new sample bootstrapped from input sample */
@@ -80,11 +78,6 @@ printf("HELLO\n");
 	double *y_true = unfold->get_true();
 	double *y = unfold->get_solution();
 	for(i=0;i<nr;++i) { printf("MEAS(%d) = %f. TRUE = %f\n", i, n[i], y_true[i]); }
-
-	// unfold->set_output_file(ofile.c_str());
-	// unfold->set_epsilon(epsilon);
-	// unfold->enable_autosave();
-	// if(max_trials) unfold->set_max_trials(max_trials);
 
 	unfold->run(option);
 
@@ -97,12 +90,13 @@ printf("HELLO\n");
 		for(int i=0;i<nt;++i) {
 			acc += y[i] * R[i][j];
 		}
-		printf("blah(%d) = %f\n", j, acc);
+		printf("REFOLDED(%d) = %f\n", j, acc);
 	}
 
 	if(nstat) {
 		printf("evaluating statistical uncertainty with %d trials. saving to %s\n", max_trials, sfile.c_str());
 		int source = truth ? Unfold::UseTruth : Unfold::UseUnfolded;
+		printf("using %s for statistical analysis\n", truth ? "truth" : "unfolded");
 		unfold->statistical_analysis(nstat, source, sfile.c_str(), covariance);
 		// unfold->statistical_analysis(nstat, source, sfile.c_str(), true, Unfold::ResponseMatrixVariationUniform, 0.05);
 	}

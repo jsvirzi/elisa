@@ -388,8 +388,8 @@ printf("stop = %d. start = %d. true uf/ov = %s/%s\n", stop, start, true_uf ? "tr
 		return false;
 	}
 	for(int i=0;i<=stop;++i) y_true[i] = h->GetBinContent(i + start);
-	printf("setting true = \n");
-	for(int i=0;i<nt;++i) printf("%.1f\n", y_true[i]);
+	// printf("setting true = \n");
+	// for(int i=0;i<nt;++i) printf("%.1f\n", y_true[i]);
 	return true;
 }
 
@@ -532,8 +532,8 @@ printf("stop = %d. start = %d. meas uf/ov = %s/%s\n", stop, start, meas_uf ? "tr
 		return false;
 	}
 	for(int i=0;i<=stop;++i) n[i] = h->GetBinContent(i + start);
-	printf("setting meas = \n");
-	for(int i=0;i<nr;++i) printf("%.1f\n", n[i]);
+	// printf("setting meas = \n");
+	// for(int i=0;i<nr;++i) printf("%.1f\n", n[i]);
 	return true;
 }
 
@@ -1069,8 +1069,14 @@ bool Unfold::get_maximum_likelihood_solution(double *y, double *n) {
 
 bool Unfold::statistical_analysis(int ntrials, int option, const char *ntuple, bool detail, int dR_options, double dR_nominal) {
 	bool stat = false;
-	if(option == UseUnfolded) stat = statistical_analysis(y, ntrials, ntuple, detail, dR_options, dR_nominal);
-	else if(option == UseTruth) stat = statistical_analysis(y_true, ntrials, ntuple, detail, dR_options, dR_nominal);
+	if(option == UseUnfolded) {
+		double *y_temp = new double [ nt ];
+		for(int i=0;i<nt;++i) y_temp[i] = y[i];
+		stat = statistical_analysis(y_temp, ntrials, ntuple, detail, dR_options, dR_nominal);
+		delete [] y_temp;
+	} else if(option == UseTruth) {
+		stat = statistical_analysis(y_true, ntrials, ntuple, detail, dR_options, dR_nominal);
+	}
 	return stat;
 }
 
@@ -1516,4 +1522,152 @@ printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "f
 }
 
 #endif
+
+bool Unfold::get_weighted_likelihood_solution(double *y, double *n, TH1D **prior) {
+	int i, j, k, trial;
+	int counter = counter0;
+	double *ytemp = new double [ nt ];
+	double *ycand = new double [ nr ];
+	double *ysave = new double [ nr ];
+	double *theta = new double [ nt ];
+	double *mu = new double [ nr ];
+	double *v1 = new double [ nt ];
+	double *v0 = new double [ nt ];
+
+/* for normalizing the Poisson weights */
+	double *prior_mean = new double [ nt ];
+	for(i=0;i<nt;++i) prior_mean[i] = prior[i]->GetMean();
+	double *prior_prob = new double [ nr ];
+	calculate_response(prior_mean, mu);
+	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], mu[j]); 
+
+	for(i=0;i<nr;++i) { v0[i] = v1[i] = 0.0; }
+	for(i=0;i<nt;++i) { ysave[i] = ycand[i] = 0.0; }
+	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i][j] = 0.0; } 
+	bool converge = false, flag;
+	trials = -1; /* nothing good has happened yet */
+	for(trial=0;trial<max_trials;++trial) {
+
+		if(progress_report_frequency && ((trial % progress_report_frequency) == 0)) {
+			printf("%d pass. %d total\n", trial, max_trials);
+		}
+
+	/* draw random solution from the priors PDF */
+		for(i=0;i<nt;++i) { theta[i] = prior[i]->GetRandom(); }
+		calculate_response(theta, mu);
+		double acc = 1.0;
+		for(j=0;j<nr;++j) {
+			double t = TMath::Poisson(n[j], mu[j]);
+			acc = acc * t / prior_prob[j]; 
+		}
+		for(i=0;i<nt;++i) {
+			v1[i] += theta[i] * acc;
+			v0[i] += acc;
+		}
+		++trial;
+
+#if 0
+/* jsv TODO got to figure this out */
+		if(detail) {
+			for(i=0;i<nr;++i) {
+				double s = mu[i];
+				double t = TMath::Log(s);
+				A[i] += s; 
+				B[i] += t;
+				for(j=0;j<nr;++j) C[j][i] += mu[j] * t; 
+			}
+		}
+#endif
+
+		for(j=0;j<nr;++j) {
+			ysave[j] = ycand[j]; /* save previous state */
+			ycand[j] = v1[j] / v0[j]; /* new state */
+		}; 
+
+		converge = true; /* assume convergence */
+		for(j=0;j<nr;++j) {
+			double y_old = ysave[j];
+			double y_new = ycand[j];
+			double y_ave = 0.5 * (y_new + y_old);
+			if(fabs(y_old - y_new) > epsilon * y_ave) { 
+				converge = false; /* no convergence yet */
+				counter = counter0; /* reset counter */
+				break; /* no need to continue after decision about no convergence */
+			}
+		}; 
+
+		if(converge) {
+			--counter; /* count down */
+			if(counter == 0) { /* enough successive trials have converged */ 
+				printf("convergence criteria reached with %d trials!\n", trial); 
+				for(i=0;i<nt;++i) y[i] = ycand[i];
+#if 0
+/* jsv TODO got to figure this out */
+				if(detail) {
+				/* jsv. is assumption about the y-convergence valid for A, B and C? */
+					for(j=0;j<nr;++j) { A[j] = A[j] / a; }
+					for(j=0;j<nr;++j) { B[j] = B[j] / a; }
+					for(i=0;i<nr;++i) { for(j=0;j<nr;++j) { C[i][j] = C[i][j] / a; } }
+					for(i=0;i<nr;++i) { for(j=0;j<nr;++j) { J[i][j] = C[i][j] - A[i] * B[j]; } }
+				}
+#endif
+
+				break;
+			}
+		}
+
+	}
+
+#if 0
+	printf("J = \n");
+	for(i=0;i<nr;++i) {
+		for(j=0;j<nr;++j) {
+			printf("%5.3f ", J[i][j]);
+		}
+		printf("\n");
+	}
+
+	for(i=0;i<nr;++i) {
+		for(j=0;j<nr;++j) {
+			cov[i][j] = 0.0;
+			for(int k=0;k<nr;++k) {
+				for(int m=0;m<nr;++m) {
+					cov[i][j] += icov[k][m] * J[i][k] * J[j][m];
+				}
+			}
+		}
+	}
+
+	printf("INPUT COVARIANCE = \n");
+	for(i=0;i<nr;++i) {
+		for(j=0;j<nr;++j) {
+			printf("%5.3f ", icov[i][j]);
+		}
+		printf("\n");
+	}
+
+	printf("OUTPUT COVARIANCE = \n");
+	for(i=0;i<nr;++i) {
+		for(j=0;j<nr;++j) {
+			printf("%5.3f ", cov[i][j]);
+		}
+		printf("\n");
+	}
+#endif
+
+	delete [] theta;
+	delete [] mu;
+	delete [] v0;
+	delete [] v1;
+	delete [] ytemp;
+	delete [] ycand;
+	delete [] ysave;
+	delete [] prior_mean;
+	delete [] prior_prob;
+
+	trials = trial; /* return the number of trials required for convergence */
+
+	return converge && (trials < max_trials);
+
+}
 

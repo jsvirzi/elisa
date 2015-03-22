@@ -66,6 +66,8 @@ class Unfold {
 	bool run(double *y, double *n, int option = 0, bool detail = false);
 	bool run(int option = 0, bool detail = false);
 	bool get_weighted_likelihood_solution(double *y, double *n, bool detail = false);
+	bool get_weighted_likelihood_solution(double *y, double *n, TH1D **prior);
+	bool get_weighted_likelihood_solution(double *y, double *n, double *prior_mean, double *prior_width);
 	bool get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess);
 	TH1D **create_pdfs(double *n, int nr);
 	TH1D **create_pdfs(double **Rinv, TH1D **pdf0, int nr);
