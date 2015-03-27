@@ -660,7 +660,7 @@ bool Unfold::run(double *y, double *n, int option, bool detail) {
 	return stat;
 }
 
-bool Unfold::run(int option, bool detail) {
+bool Unfold::run(TH1D **prior, int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
 		double *guess = make_guess(option); 
@@ -672,7 +672,8 @@ bool Unfold::run(int option, bool detail) {
 	} else if(algorithm == Elisa) {
 		double *ntemp = new double [ nr ];
 		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
-		stat = get_weighted_likelihood_solution(y, ntemp, detail);
+		if(prior == 0) stat = get_weighted_likelihood_solution(y, ntemp, detail);
+		else stat = get_weighted_likelihood_solution(y, ntemp, detail, prior);
 		delete [] ntemp;
 	}
 	return stat;
@@ -1070,7 +1071,7 @@ bool Unfold::get_maximum_likelihood_solution(double *y, double *n) {
 bool Unfold::statistical_analysis(int ntrials, int option, const char *ntuple, bool detail, int dR_options, double dR_nominal) {
 	bool stat = false;
 	if(option == UseUnfolded) {
-		double *y_temp = new double [ nt ];
+		double *y_temp = new double [ nt ]; /* need to buffer y because it is modified by the algorithm */
 		for(int i=0;i<nt;++i) y_temp[i] = y[i];
 		stat = statistical_analysis(y_temp, ntrials, ntuple, detail, dR_options, dR_nominal);
 		delete [] y_temp;
@@ -1523,7 +1524,7 @@ printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "f
 
 #endif
 
-bool Unfold::get_weighted_likelihood_solution(double *y, double *n, TH1D **prior) {
+bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail, TH1D **prior) {
 	int i, j, k, trial;
 	int counter = counter0;
 	double *ytemp = new double [ nt ];
@@ -1532,7 +1533,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, TH1D **prior
 	double *theta = new double [ nt ];
 	double *mu = new double [ nr ];
 	double *v1 = new double [ nt ];
-	double *v0 = new double [ nt ];
+	double *v0 = new double [ nt ]; /* jsv. don't need array for this */
 
 /* for normalizing the Poisson weights */
 	double *prior_mean = new double [ nt ];
@@ -1540,9 +1541,9 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, TH1D **prior
 	double *prior_prob = new double [ nr ];
 	calculate_response(prior_mean, mu);
 	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], mu[j]); 
+for(i=0;i<nt;++i) printf("prior %d has mean %f and prob = %f\n", i, prior_mean[i], prior_prob[i]);
 
-	for(i=0;i<nr;++i) { v0[i] = v1[i] = 0.0; }
-	for(i=0;i<nt;++i) { ysave[i] = ycand[i] = 0.0; }
+	for(i=0;i<nt;++i) { v0[i] = v1[i] = ysave[i] = ycand[i] = 0.0; }
 	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i][j] = 0.0; } 
 	bool converge = false, flag;
 	trials = -1; /* nothing good has happened yet */
@@ -1558,9 +1559,13 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, TH1D **prior
 		double acc = 1.0;
 		for(j=0;j<nr;++j) {
 			double t = TMath::Poisson(n[j], mu[j]);
+printf("bin %d probs = %f %f coming from THETA=%f MU=%f N=%f\n", j, t, prior_prob[j], theta[j], mu[j], n[j]);
 			acc = acc * t / prior_prob[j]; 
 		}
+acc = 1.0;
+printf("ACC=%f\n", acc);
 		for(i=0;i<nt;++i) {
+// printf("THETA(%d) = %f\n", i, theta[i]);
 			v1[i] += theta[i] * acc;
 			v0[i] += acc;
 		}
@@ -1582,7 +1587,10 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, TH1D **prior
 		for(j=0;j<nr;++j) {
 			ysave[j] = ycand[j]; /* save previous state */
 			ycand[j] = v1[j] / v0[j]; /* new state */
+printf("cand(%d) = %f = %f / %f\n", j, ycand[j], v1[j], v0[j]);
 		}; 
+
+// getchar();
 
 		converge = true; /* assume convergence */
 		for(j=0;j<nr;++j) {

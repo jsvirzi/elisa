@@ -64,10 +64,14 @@ class Unfold {
 	// bool initialize_response_matrix(const char *file, const char *name, double weight = 1.0);
 	bool initialize_response_matrix(const char *file);
 	bool run(double *y, double *n, int option = 0, bool detail = false);
-	bool run(int option = 0, bool detail = false);
-	bool get_weighted_likelihood_solution(double *y, double *n, bool detail = false);
-	bool get_weighted_likelihood_solution(double *y, double *n, TH1D **prior);
-	bool get_weighted_likelihood_solution(double *y, double *n, double *prior_mean, double *prior_width);
+	bool run(double *y, double *n, TH1D **prior, int option = 0, bool detail = false);
+	bool run(double *y, double *n, double *prior_mean, double *prior_width, int option = 0, bool detail = false);
+	// bool run(int option = 0, bool detail = false);
+	bool run(TH1D **prior = 0, int option = 0, bool detail = false);
+	// jsv clashes with other run() bool run(double *prior_mean, double *prior_width, int option = 0, bool detail = false);
+	bool get_weighted_likelihood_solution(double *y, double *n, bool detail);
+	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, TH1D **prior);
+	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, double *prior_mean, double *prior_width);
 	bool get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess);
 	TH1D **create_pdfs(double *n, int nr);
 	TH1D **create_pdfs(double **Rinv, TH1D **pdf0, int nr);
