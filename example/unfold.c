@@ -1,3 +1,6 @@
+#include "TFile.h"
+#include "TH1D.h"
+
 #include "unfold.h"
 
 #include "stdlib.h"
@@ -6,10 +9,10 @@ bool debug = false, verbose = false;
 
 int main(int argc, char **argv) {
 
-	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile;
+	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname;
 	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0;
 	double epsilon = 0.001;
-	bool covariance = false, bootstrap = false, truth = false;
+	bool covariance = false, bootstrap = false, truth = false, use_prior = false;
 
 /* defaults */
 	rfile = "example/response_matrix.dat";
@@ -30,6 +33,7 @@ int main(int argc, char **argv) {
 		} else if(strcmp("-r", argv[i]) == 0) { rfile = argv[++i]; /* response matrix */
 		} else if(strcmp("-meas", argv[i]) == 0) { dfile = argv[++i]; dname = argv[++i]; /* the data */
 		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; truth = true; 
+		} else if(strcmp("-prior", argv[i]) == 0) { pfile = argv[++i]; pname = argv[++i]; use_prior = true; 
 		} else if(strcmp("-trials", argv[i]) == 0) { max_trials = atoi(argv[++i]); 
 		} else if(strcmp("-statistical_analysis", argv[i]) == 0) { 
 			nstat = atoi(argv[++i]); /* number of pseudo-experiments */
@@ -52,7 +56,6 @@ int main(int argc, char **argv) {
 
 	printf("unfolding [%s]\n", dname.c_str());
 	printf("convergence criteria = %f\n", epsilon);
-	// getchar();
 
 	Unfold *unfold = 0;
 	if(algorithm < 0) { unfold = new Unfold(Unfold::Elisa, name.c_str()); } 
@@ -79,7 +82,21 @@ int main(int argc, char **argv) {
 	double *y = unfold->get_solution();
 	for(i=0;i<nr;++i) { printf("MEAS(%d) = %f. TRUE = %f\n", i, n[i], y_true[i]); }
 
-	unfold->run(option);
+	TH1D **prior = 0;
+	if(use_prior) {
+		char *str = new char [ pname.length() + 32 ];
+		TFile fp(pfile.c_str(), "read");
+		prior = new TH1D * [ nt ];
+		for(i=0;i<nt;++i) {
+			sprintf(str, "%s%d", pname.c_str(), i);
+			prior[i] = (TH1D *)fp.Get(str);
+			prior[i]->SetDirectory(0);
+		}
+		fp.Close();
+		delete [] str;
+	}
+
+	unfold->run(prior, option);
 
 	for(i=0;i<nr;++i) { printf("UNFOLDED(%d) = %f\n", i, y[i]); }
 
