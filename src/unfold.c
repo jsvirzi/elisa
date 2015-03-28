@@ -105,7 +105,7 @@ Unfold::Unfold(int algorithm, const char *name) :
 	guess(0), 
 	accr(0), acct(0), mean(0), rms(0), closure_ratio(0), y_true(0), A(0), B(0), C(0), cov(0), icov(0), J(0), 
 	bias(0),
-	autosave(false), prior(0), dprior(0), n_response(0), seed(4357),
+	autosave(false), n_response(0), seed(4357), prior(0),
 	progress_report_frequency(0)
 	{
 	this->algorithm = algorithm;
@@ -263,8 +263,8 @@ bool Unfold::initialize_response_matrix(const char *file) {
 	acct = new double [ nt ];
 	z = new double [ nt ];
 	guess = new double [ nt ]; /* the initial guess */
-	prior = new double [ nt ]; /* the initial guess */
-	dprior = new double [ nt ]; /* the initial guess */
+	// prior = new double [ nt ]; /* the initial guess */
+	// dprior = new double [ nt ]; /* the initial guess */
 	y_true = new double [ nt ]; 
 	closure_ratio = new double [ nt ];
 	A = new double [ nr ];
@@ -307,6 +307,19 @@ bool Unfold::initialize_response_matrix(const char *file) {
 	return stat;
 }
 
+bool Unfold::set_prior(TH1D **prior) {
+	if(this->prior) { /* if priors were previously set, clean up */
+		for(int i=0;i<nt;++i) delete this->prior[i]; 
+	} else {
+		this->prior = new TH1D * [ nt ];
+	}
+	for(int i=0;i<nt;++i) {
+		this->prior[i] = new TH1D(*prior[i]);
+		this->prior[i]->SetDirectory(0);
+	}
+	return true;
+}
+
 bool Unfold::cleanup() {
 
 	if(str) delete [] str;
@@ -327,12 +340,17 @@ bool Unfold::cleanup() {
 		dR = 0;
 	}
 
+	if(prior) {
+		for(int i=0;i<nt;++i) delete prior[i]; 
+		delete [] prior; 
+	}
+
 	// if(eff) { delete [] eff; eff = 0; }
 	// if(deff) { delete [] deff; deff = 0; }
 	if(y) { delete [] y; y = 0; }
 	if(guess) { delete [] guess; guess = 0; }
-	if(prior) { delete [] prior; prior = 0; }
-	if(dprior) { delete [] dprior; dprior = 0; }
+	// if(prior) { delete [] prior; prior = 0; }
+	// if(dprior) { delete [] dprior; dprior = 0; }
 	if(y_true) { delete [] y_true; y_true = 0; }
 	if(n) { delete [] n; n = 0; }
 	if(z) { delete [] z; z = 0; }
@@ -643,6 +661,30 @@ double *Unfold::make_guess(int option) {
 	return guess;
 }
 
+/* jsv TODO lots of overlap between run() methods. fix */
+
+bool Unfold::run(int option, bool detail) {
+	bool stat = false;
+	if(algorithm == BayesianIteration) {
+		double *guess = make_guess(option);
+		stat = get_bayesian_iterative_solution(y, n, iterations, guess);
+		if(guess) delete [] guess;
+	} else if(algorithm == MaximumLikelihood) {
+		stat = get_maximum_likelihood_solution(y, n);
+	} else if(algorithm == Elisa) {
+		double *ntemp = new double [ nr ];
+		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
+		stat = get_weighted_likelihood_solution(y, ntemp, detail);
+		delete [] ntemp;
+	}
+	return stat;
+}
+
+/* input:
+ * 	n is data
+ * output:
+ * 	y is unfolded result
+ */
 bool Unfold::run(double *y, double *n, int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
@@ -654,24 +696,6 @@ bool Unfold::run(double *y, double *n, int option, bool detail) {
 	} else if(algorithm == Elisa) {
 		double *ntemp = new double [ nr ];
 		for(int i=0;i<nr;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
-		stat = get_weighted_likelihood_solution(y, ntemp, detail);
-		delete [] ntemp;
-	}
-	return stat;
-}
-
-bool Unfold::run(TH1D **prior, int option, bool detail) {
-	bool stat = false;
-	if(algorithm == BayesianIteration) {
-		double *guess = make_guess(option); 
-		stat = get_bayesian_iterative_solution(y, n, iterations, guess);
-		if(guess) delete [] guess;
-	} else if(algorithm == MaximumLikelihood) {
-		stat = get_maximum_likelihood_solution(y, n);
-		// printf("bayesian closure weight = %f\n", bayesian_closure_weight(y, n));
-	} else if(algorithm == Elisa) {
-		double *ntemp = new double [ nr ];
-		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
 		if(prior == 0) stat = get_weighted_likelihood_solution(y, ntemp, detail);
 		else stat = get_weighted_likelihood_solution(y, ntemp, detail, prior);
 		delete [] ntemp;
@@ -1242,23 +1266,31 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	throws = 0;
 	tree->Fill();
 
-	for(trial=0;trial<ntrials;++trial) {
-		if(progress_report_frequency && ((trial % progress_report_frequency) == 0))
-			printf("trial %d / %d\n", trial, ntrials);
+	calculate_response(y0, mu); /* working value of mu */
 
-		calculate_response(y0, mu); /* working value of mu */
-	/* Poisson extraction on the expected value in the detector */
-		for(i=0;i<nr;++i) ntemp[i] = rndm->Poisson(mu[i]);
-
-	/* check for validity of "input" data. it must be at least 1, definitely not 0 */
-		bool valid = true;
+/* check for validity of "input" data. it must be at least 1, definitely not 0 */
+	bool valid = false;
+	while(!valid) {
+/* jsv. TODO loop limit? */
+		valid = true;
 		for(i=0;i<nr;++i) {
 			if(mu[i] < 0.001) { /* some token amount above zero */
 				valid = false;
 				break;
 			}
 		}
-		if(valid == false) continue;
+	}
+
+	for(trial=0;trial<ntrials;++trial) {
+		if(progress_report_frequency && ((trial % progress_report_frequency) == 0))
+			printf("trial %d / %d\n", trial, ntrials);
+
+	/* Poisson extraction on the expected value in the detector. want at least 2 entries in each bin */
+	/* jsv. TODO loop limit? */
+		for(i=0;i<nr;++i) {
+			ntemp[i] = rndm->Poisson(mu[i]);
+			while(ntemp[i] < 1.001) ntemp[i] = rndm->Poisson(mu[i]);
+		}
 
 		if(dR_options == ResponseMatrixVariationUniform) {
 			for(i=0;i<nt;++i) {
@@ -1541,7 +1573,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	double *prior_prob = new double [ nr ];
 	calculate_response(prior_mean, mu);
 	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], mu[j]); 
-for(i=0;i<nt;++i) printf("prior %d has mean %f and prob = %f\n", i, prior_mean[i], prior_prob[i]);
+// for(i=0;i<nt;++i) printf("prior %d has mean %f and prob = %f\n", i, prior_mean[i], prior_prob[i]);
 
 	for(i=0;i<nt;++i) { v0[i] = v1[i] = ysave[i] = ycand[i] = 0.0; }
 	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i][j] = 0.0; } 
@@ -1559,11 +1591,10 @@ for(i=0;i<nt;++i) printf("prior %d has mean %f and prob = %f\n", i, prior_mean[i
 		double acc = 1.0;
 		for(j=0;j<nr;++j) {
 			double t = TMath::Poisson(n[j], mu[j]);
-printf("bin %d probs = %f %f coming from THETA=%f MU=%f N=%f\n", j, t, prior_prob[j], theta[j], mu[j], n[j]);
+// printf("bin %d probs = %f %f coming from THETA=%f MU=%f N=%f\n", j, t, prior_prob[j], theta[j], mu[j], n[j]);
 			acc = acc * t / prior_prob[j]; 
 		}
-acc = 1.0;
-printf("ACC=%f\n", acc);
+// printf("ACC=%f\n", acc);
 		for(i=0;i<nt;++i) {
 // printf("THETA(%d) = %f\n", i, theta[i]);
 			v1[i] += theta[i] * acc;
@@ -1587,7 +1618,7 @@ printf("ACC=%f\n", acc);
 		for(j=0;j<nr;++j) {
 			ysave[j] = ycand[j]; /* save previous state */
 			ycand[j] = v1[j] / v0[j]; /* new state */
-printf("cand(%d) = %f = %f / %f\n", j, ycand[j], v1[j], v0[j]);
+// printf("cand(%d) = %f = %f / %f\n", j, ycand[j], v1[j], v0[j]);
 		}; 
 
 // getchar();

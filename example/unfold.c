@@ -94,9 +94,11 @@ int main(int argc, char **argv) {
 		}
 		fp.Close();
 		delete [] str;
+
+		unfold->set_prior(prior);
 	}
 
-	unfold->run(prior, option);
+	unfold->run(option);
 
 	for(i=0;i<nr;++i) { printf("UNFOLDED(%d) = %f\n", i, y[i]); }
 
