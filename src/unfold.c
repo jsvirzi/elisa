@@ -1565,7 +1565,11 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	double *theta = new double [ nt ];
 	double *mu = new double [ nr ];
 	double *v1 = new double [ nt ];
+	double *v1cand = new double [ nt ];
+	double *v1save = new double [ nt ];
 	double *v0 = new double [ nt ]; /* jsv. don't need array for this */
+	double *v0cand = new double [ nt ]; /* jsv. don't need array for this */
+	double *v0save = new double [ nt ]; /* jsv. don't need array for this */
 
 /* for normalizing the Poisson weights */
 	double *prior_mean = new double [ nt ];
@@ -1577,7 +1581,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 
 	for(i=0;i<nt;++i) { v0[i] = v1[i] = ysave[i] = ycand[i] = 0.0; }
 	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i][j] = 0.0; } 
-	bool converge = false, flag;
+	bool converge = false, converge1 = false, converge0 = false, flag;
 	trials = -1; /* nothing good has happened yet */
 	for(trial=0;trial<max_trials;++trial) {
 
@@ -1591,12 +1595,9 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 		double acc = 1.0;
 		for(j=0;j<nr;++j) {
 			double t = TMath::Poisson(n[j], mu[j]);
-// printf("bin %d probs = %f %f coming from THETA=%f MU=%f N=%f\n", j, t, prior_prob[j], theta[j], mu[j], n[j]);
 			acc = acc * t / prior_prob[j]; 
 		}
-// printf("ACC=%f\n", acc);
 		for(i=0;i<nt;++i) {
-// printf("THETA(%d) = %f\n", i, theta[i]);
 			v1[i] += theta[i] * acc;
 			v0[i] += acc;
 		}
@@ -1615,31 +1616,51 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 		}
 #endif
 
+#if 0
 		for(j=0;j<nr;++j) {
 			ysave[j] = ycand[j]; /* save previous state */
 			ycand[j] = v1[j] / v0[j]; /* new state */
-// printf("cand(%d) = %f = %f / %f\n", j, ycand[j], v1[j], v0[j]);
+		}; 
+#endif
+
+		for(j=0;j<nr;++j) {
+			v1save[j] = v1cand[j]; /* save previous state */
+			v0save[j] = v0cand[j]; /* save previous state */
+			if(!converge1) v1cand[j] = v1[j] / trial; 
+			if(!converge0) v0cand[j] = v0[j] / trial;
 		}; 
 
-// getchar();
-
-		converge = true; /* assume convergence */
+		converge1 = true; /* assume convergence */
 		for(j=0;j<nr;++j) {
-			double y_old = ysave[j];
-			double y_new = ycand[j];
-			double y_ave = 0.5 * (y_new + y_old);
-			if(fabs(y_old - y_new) > epsilon * y_ave) { 
-				converge = false; /* no convergence yet */
+			double v1_old = v1save[j];
+			double v1_new = v1cand[j];
+			double v1_ave = 0.5 * (v1_new + v1_old);
+			if(fabs(v1_old - v1_new) > epsilon * v1_ave) { 
+				converge1 = false; /* no convergence yet */
 				counter = counter0; /* reset counter */
 				break; /* no need to continue after decision about no convergence */
 			}
 		}; 
 
+		converge0 = true; /* assume convergence */
+		for(j=0;j<nr;++j) {
+			double v0_old = v0save[j];
+			double v0_new = v0cand[j];
+			double v0_ave = 0.5 * (v0_new + v0_old);
+			if(fabs(v0_old - v0_new) > epsilon * v0_ave) { 
+				converge0 = false; /* no convergence yet */
+				counter = counter0; /* reset counter */
+				break; /* no need to continue after decision about no convergence */
+			}
+		}; 
+
+		converge = converge1 && converge0;
+
 		if(converge) {
 			--counter; /* count down */
 			if(counter == 0) { /* enough successive trials have converged */ 
 				printf("convergence criteria reached with %d trials!\n", trial); 
-				for(i=0;i<nt;++i) y[i] = ycand[i];
+				for(i=0;i<nt;++i) y[i] = v1[i] / v0[i];
 #if 0
 /* jsv TODO got to figure this out */
 				if(detail) {
@@ -1697,7 +1718,11 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	delete [] theta;
 	delete [] mu;
 	delete [] v0;
+	delete [] v0cand;
+	delete [] v0save;
 	delete [] v1;
+	delete [] v1cand;
+	delete [] v1save;
 	delete [] ytemp;
 	delete [] ycand;
 	delete [] ysave;
