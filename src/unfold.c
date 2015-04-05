@@ -1092,15 +1092,15 @@ bool Unfold::get_maximum_likelihood_solution(double *y, double *n) {
 	return true;
 }
 
-bool Unfold::statistical_analysis(int ntrials, int option, const char *ntuple, bool detail, int dR_options, double dR_nominal) {
+bool Unfold::statistical_analysis(int ntrials, int option, const char *file, bool detail, int dR_options, double dR_nominal) {
 	bool stat = false;
 	if(option == UseUnfolded) {
 		double *y_temp = new double [ nt ]; /* need to buffer y because it is modified by the algorithm */
 		for(int i=0;i<nt;++i) y_temp[i] = y[i];
-		stat = statistical_analysis(y_temp, ntrials, ntuple, detail, dR_options, dR_nominal);
+		stat = statistical_analysis(y_temp, ntrials, file, detail, dR_options, dR_nominal);
 		delete [] y_temp;
 	} else if(option == UseTruth) {
-		stat = statistical_analysis(y_true, ntrials, ntuple, detail, dR_options, dR_nominal);
+		stat = statistical_analysis(y_true, ntrials, file, detail, dR_options, dR_nominal);
 	}
 	return stat;
 }
@@ -1131,7 +1131,7 @@ bool Unfold::write_basic_info(const char *file) {
 	get_efficiency(eff);
 
 	fp = new TFile(file, "update");
-	tree = new TTree("info", "info");
+	tree = new TTree("extraction_info", "extraction_info");
 	tree->Branch("nt", &nr, "nt/I");
 	tree->Branch("nr", &nr, "nr/I");
 	tree->Branch("dim", &dim, "dim/I");
@@ -1594,8 +1594,8 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 		calculate_response(theta, mu);
 		double acc = 1.0;
 		for(j=0;j<nr;++j) {
-			double t = TMath::Poisson(n[j], mu[j]);
-			acc = acc * t / prior_prob[j]; 
+			double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
+			acc = acc * t;
 		}
 		for(i=0;i<nt;++i) {
 			v1[i] += theta[i] * acc;
@@ -1733,5 +1733,86 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 
 	return converge && (trials < max_trials);
 
+}
+
+bool Unfold::error_analysis(int ntrials, const char *file) {
+	int i, j, trial, throws, status;
+	bool detail = false;
+	double *y_input = new double [ nt ];
+	double *y_temp = new double [ nt ];
+	double *mu = new double [ nr ];
+	double weight;
+
+printf("i am so here\n");
+
+/* for normalizing the Poisson weights */
+	double *prior_mean = new double [ nt ];
+	for(i=0;i<nt;++i) prior_mean[i] = prior[i]->GetMean();
+	double *prior_prob = new double [ nr ];
+	calculate_response(prior_mean, mu);
+	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], mu[j]); 
+// for(i=0;i<nt;++i) printf("prior %d has mean %f and prob = %f\n", i, prior_mean[i], prior_prob[i]);
+
+printf("i am so there\n");
+
+/* initialize the ntuple with basic information */
+	TFile *fp = new TFile(file, "update");
+	TTree *tree = new TTree("solution_info", "solution_info");
+	tree->Branch("dim", &nt, "dim/I");
+	tree->Branch("y", y, "y[dim]/D"); /* central value */
+	tree->Branch("n", n, "n[dim]/D"); /* the data */
+	tree->Branch("mu", mu, "mu[dim]/D");
+	tree->Branch("prior_mean", prior_mean, "prior_mean[dim]/D");
+	tree->Branch("prior_prob", prior_prob, "prior_prob[dim]/D");
+
+	tree->Fill();
+
+/* close out the basic information */
+	fp->cd();
+	tree->Write();
+	fp->Write();
+	fp->Close();
+	delete fp;
+
+/* initialize the ntuple */
+	fp = new TFile(file, "update");
+	tree = new TTree("solution", "solution");
+	tree->Branch("weight", &weight, "weight/D");
+	tree->Branch("throws", &throws, "throws/I");
+	tree->Branch("status", &status, "status/I");
+	tree->Branch("dim", &nt, "dim/I");
+	tree->Branch("y_input", y_input, "y[dim]/D");
+	tree->Branch("y", y_temp, "y[dim]/D");
+
+	for(trial=0;trial<ntrials;++trial) {
+		for(i=0;i<nt;++i) { y_temp[i] = y_input[i] = prior[i]->GetRandom(); }
+		calculate_response(y_temp, mu);
+		for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
+		weight = 1.0;
+		for(j=0;j<nr;++j) {
+			double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
+			weight = weight * t;
+		}
+		printf("weight = %f\n", weight);
+		bool flag = get_weighted_likelihood_solution(y_temp, n, detail, prior);
+		throws = trials; /* return the number of trials required for convergence */
+		status = flag ? 1 : 0;
+		tree->Fill();
+	}
+
+/* close out the ntuple */
+	fp->cd();
+	tree->Write();
+	fp->Write();
+	fp->Close();
+	delete fp;
+
+	delete [] mu;
+	delete [] y_temp;
+	delete [] y_input;
+	delete [] prior_mean;
+	delete [] prior_prob;
+
+	return true;
 }
 
