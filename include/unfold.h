@@ -42,7 +42,7 @@ class Unfold {
 		ResponseMatrixVariationUniform
 	} ResponseMatrixVariationOptions;
 
-	void set_seed(int seed) { this->seed = seed; rndm->SetSeed(seed); };
+	void set_seed(int seed) { this->seed = seed; rndm->SetSeed(seed); gRandom->SetSeed(seed); };
 	int get_seed() { return seed; };
 	// void set_dimension(int N) { this->N = N; };
 	bool set_true(double *true_bins, int n = 0);
@@ -85,10 +85,11 @@ class Unfold {
 	double **get_response_matrix();
 	int get_n_true() { return nt; };
 	int get_n_meas() { return nr; };
-	bool statistical_analysis(double *y0, int ntrials, const char *ntuple, 
+	bool statistical_analysis(double *y0, int ntrials, const char *file, 
 		bool detail = false, int dR_options = ResponseMatrixVariationNone, double dR_nom = 0.0);
-	bool statistical_analysis(int ntrials, int option, const char *ntuple,
+	bool statistical_analysis(int ntrials, int option, const char *file,
 		bool detail = false, int dR_options = ResponseMatrixVariationNone, double dR_nom = 0.0);
+	bool error_analysis(int ntrials, const char *file);
 	bool calculate_response(double *y, double *mu, double **R = 0);
 	double closure_test();
 	bool set_iterations(int iterations) { this->iterations = iterations; };
@@ -98,7 +99,7 @@ class Unfold {
 	private:
 
 	double *make_guess(int option);
-	bool write_basic_info(const char *ntuple);
+	bool write_basic_info(const char *file);
 	bool true_uf, true_ov, meas_uf, meas_ov;
 	int N;
 	int progress_report_frequency; /* how often to report progress */

@@ -1,3 +1,5 @@
+# example/unfold -algorithm 0 -error_analysis 1000 example/elisa_error_analysis.root -prior example/ensemble_2.root elisa_bin
+
 algo=${1}
 n=${2}
 if [ "${algo}" == "elisa" ] ; then 

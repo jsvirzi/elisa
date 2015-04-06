@@ -9,8 +9,8 @@ bool debug = false, verbose = false;
 
 int main(int argc, char **argv) {
 
-	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname;
-	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0;
+	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname, efile;
+	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0, nerrm = 0;
 	double epsilon = 0.001;
 	bool covariance = false, bootstrap = false, truth = false, use_prior = false;
 
@@ -35,6 +35,9 @@ int main(int argc, char **argv) {
 		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; truth = true; 
 		} else if(strcmp("-prior", argv[i]) == 0) { pfile = argv[++i]; pname = argv[++i]; use_prior = true; 
 		} else if(strcmp("-trials", argv[i]) == 0) { max_trials = atoi(argv[++i]); 
+		} else if(strcmp("-error_analysis", argv[i]) == 0) { 
+			nerrm= atoi(argv[++i]); /* number of pseudo-experiments */
+			efile = argv[++i]; /* output file for pseudo-experiments */
 		} else if(strcmp("-statistical_analysis", argv[i]) == 0) { 
 			nstat = atoi(argv[++i]); /* number of pseudo-experiments */
 			sfile = argv[++i]; /* output file for pseudo-experiments */
@@ -119,6 +122,12 @@ int main(int argc, char **argv) {
 		unfold->statistical_analysis(nstat, source, sfile.c_str(), covariance);
 		// unfold->statistical_analysis(nstat, source, sfile.c_str(), true, Unfold::ResponseMatrixVariationUniform, 0.05);
 	}
+
+	if(nerrm) {
+		printf("evaluating error analysis with %d trials. saving to %s\n", nerrm, efile.c_str());
+		unfold->error_analysis(nerrm, efile.c_str());
+	}
+
 	if(truth) unfold->closure_test();
 #if 0
 	unfold->write_info();

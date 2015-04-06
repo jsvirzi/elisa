@@ -1,3 +1,5 @@
+/* jsv TODO can PDFs be created one time, or will there be confusion? */
+/* jsv TODO can priors yield values less than 0? */
 #include <vector>
 
 #include "TH1D.h"
@@ -105,7 +107,7 @@ Unfold::Unfold(int algorithm, const char *name) :
 	guess(0), 
 	accr(0), acct(0), mean(0), rms(0), closure_ratio(0), y_true(0), A(0), B(0), C(0), cov(0), icov(0), J(0), 
 	bias(0),
-	autosave(false), n_response(0), seed(4357), prior(0),
+	autosave(false), n_response(0), seed(4357), prior(0), 
 	progress_report_frequency(0)
 	{
 	this->algorithm = algorithm;
@@ -663,6 +665,11 @@ double *Unfold::make_guess(int option) {
 
 /* jsv TODO lots of overlap between run() methods. fix */
 
+/* input:
+ * 	n is data
+ * output:
+ * 	y is unfolded result
+ */
 bool Unfold::run(int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
@@ -680,11 +687,6 @@ bool Unfold::run(int option, bool detail) {
 	return stat;
 }
 
-/* input:
- * 	n is data
- * output:
- * 	y is unfolded result
- */
 bool Unfold::run(double *y, double *n, int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
@@ -786,8 +788,6 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 	trials = -1; /* nothing good has happened yet */
 
 	TH1D **pdf = create_pdfs(n, nr);
-	// create_pdfs(Rinv, pdf, nr); /* jsv */
-
 	// printf("get_elisa(%x, %x) with NT=%d NR=%d\n", y, n, nt, nr);
 
 #define JSVDEBUG 0
@@ -925,10 +925,10 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 
 }
 
+/* create PDFs for random number generation from the likelihood function */
 TH1D **Unfold::create_pdfs(double *n, int nr) {
 
 	// printf("creating PDFs\n");
-/* create PDFs for random number generation */
 	char s[1024];
 	int i, j, bin, nbins = 250;
 	double x, acc, width, x_min, x_max, *a = new double [ nbins ];
@@ -969,6 +969,8 @@ TH1D **Unfold::create_pdfs(double *n, int nr) {
 	return pdf;
 
 }
+
+#if 0
 
 /* jsv. Can we get rid of ytemp below? */
 TH1D **Unfold::create_pdfs(double **Rinv, TH1D **pdf0, int nr) {
@@ -1055,6 +1057,8 @@ TH1D **Unfold::create_pdfs(double **Rinv, TH1D **pdf0, int nr) {
 	delete [] ntemp;
 	delete [] ytemp;
 }
+
+#endif
 
 #if 0
 /* find solution to R * y = n using Cramer's rule */
@@ -1743,17 +1747,15 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	double *mu = new double [ nr ];
 	double weight;
 
-printf("i am so here\n");
-
 /* for normalizing the Poisson weights */
 	double *prior_mean = new double [ nt ];
-	for(i=0;i<nt;++i) prior_mean[i] = prior[i]->GetMean();
+	if(prior) for(i=0;i<nt;++i) prior_mean[i] = prior[i]->GetMean();
+	else prior_mean[i] = 0.0;
 	double *prior_prob = new double [ nr ];
 	calculate_response(prior_mean, mu);
-	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], mu[j]); 
+	if(prior) for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], mu[j]); 
+	else prior_prob[i] = 0.0;
 // for(i=0;i<nt;++i) printf("prior %d has mean %f and prob = %f\n", i, prior_mean[i], prior_prob[i]);
-
-printf("i am so there\n");
 
 /* initialize the ntuple with basic information */
 	TFile *fp = new TFile(file, "update");
@@ -1784,20 +1786,35 @@ printf("i am so there\n");
 	tree->Branch("y_input", y_input, "y[dim]/D");
 	tree->Branch("y", y_temp, "y[dim]/D");
 
-	for(trial=0;trial<ntrials;++trial) {
-		for(i=0;i<nt;++i) { y_temp[i] = y_input[i] = prior[i]->GetRandom(); }
-		calculate_response(y_temp, mu);
-		for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
-		weight = 1.0;
-		for(j=0;j<nr;++j) {
-			double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
-			weight = weight * t;
+	if(prior) {
+		for(trial=0;trial<ntrials;++trial) {
+			for(i=0;i<nt;++i) { y_temp[i] = y_input[i] = prior[i]->GetRandom(); }
+			calculate_response(y_temp, mu);
+			for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
+			weight = 1.0;
+			for(j=0;j<nr;++j) {
+				double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
+				weight = weight * t;
+			}
+			printf("weight = %f\n", weight);
+			bool flag = get_weighted_likelihood_solution(y_temp, n, detail, prior);
+			throws = trials; /* return the number of trials required for convergence */
+			status = flag ? 1 : 0;
+			tree->Fill();
 		}
-		printf("weight = %f\n", weight);
-		bool flag = get_weighted_likelihood_solution(y_temp, n, detail, prior);
-		throws = trials; /* return the number of trials required for convergence */
-		status = flag ? 1 : 0;
-		tree->Fill();
+	} else {
+		create_pdfs();
+		for(trial=0;trial<ntrials;++trial) {
+			for(int i=0;i<max_trials;++i) {
+				for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from the PDF */
+				flag = get_maximum_likelihood_solution(y_temp, mu); /* y_temp = mu X Rinv. for Theta-function test */
+				if(flag == false) continue; /* jsv. where does this happen where it fails? */
+				flag = false; /* assume theta-function yields 1 */
+				for(i=0;i<nt;++i) { if(ytemp[i] <= 0.0) { flag = true; break; } } /* Theta-function yields 0 */
+				if(flag) continue; /* Theta = 0 */
+				else break; /* we have a good candidate */
+			}
+		}
 	}
 
 /* close out the ntuple */
