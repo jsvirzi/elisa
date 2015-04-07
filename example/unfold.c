@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
 	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname, efile;
 	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0, nerrm = 0;
 	double epsilon = 0.001;
-	bool covariance = false, bootstrap = false, truth = false, use_prior = false;
+	bool covariance = false, bootstrap = false, truth = false, use_prior = false, error_analysis;
 
 /* defaults */
 	rfile = "example/response_matrix.dat";

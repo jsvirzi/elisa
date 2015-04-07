@@ -815,14 +815,10 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 	/* draw random mu from the PDF */
 		for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); }
 		flag = get_maximum_likelihood_solution(ytemp, mu); /* ytemp = mu X Rinv. for Theta-function test */
-		if(flag == false) continue;
+		if(flag == false) continue; /* solution must be positive-definite */
 
 		// for(i=0;i<nr;++i) printf("BIN(%d) : MU = %f. Y = %f. ACC = %f\n", i, mu[i], ytemp[i], ycand[i]);
 		// getchar();
-
-		flag = false; /* assume theta-function yields 1 */
-		for(i=0;i<nt;++i) { if(ytemp[i] <= 0.0) { flag = true; break; } } /* Theta-function yields 0 */
-		if(flag) continue; /* Theta = 0 */
 
 		for(i=0;i<nr;++i) v[i] += mu[i];
 		a += 1.0;
@@ -1081,8 +1077,11 @@ bool Unfold::get_maximum_likelihood_solution(double *y) {
 }
 #endif
 
-/* find solution to R * y = n using matrix inversion */
+/* find solution to R * y = n using matrix inversion. 
+ * return *true* if the solution is positive-definite. *false* otherwise
+ */
 bool Unfold::get_maximum_likelihood_solution(double *y, double *n) { 
+	bool flag = true;
 	trials = 1; /* number of tries is always 1 for MLE. here for consistency with other methods */
 	if(n == 0) n = this->n;
 /* this is written as if nr could be different than nt, but nr = nt is required. 
@@ -1092,8 +1091,9 @@ bool Unfold::get_maximum_likelihood_solution(double *y, double *n) {
 		double acc = 0.0;
 		for(j=0;j<nr;++j) acc += n[j] * Rinv[j][i];
 		y[i] = acc;
+		if(y[i] <= 0.0) flag = false;
 	}
-	return true;
+	return flag;
 }
 
 bool Unfold::statistical_analysis(int ntrials, int option, const char *file, bool detail, int dR_options, double dR_nominal) {
@@ -1783,38 +1783,41 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	tree->Branch("throws", &throws, "throws/I");
 	tree->Branch("status", &status, "status/I");
 	tree->Branch("dim", &nt, "dim/I");
-	tree->Branch("y_input", y_input, "y[dim]/D");
+	tree->Branch("y_input", y_input, "y_input[dim]/D");
 	tree->Branch("y", y_temp, "y[dim]/D");
 
 	if(prior) {
 		for(trial=0;trial<ntrials;++trial) {
 			for(i=0;i<nt;++i) { y_temp[i] = y_input[i] = prior[i]->GetRandom(); }
 			calculate_response(y_temp, mu);
-			for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
+// for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
 			weight = 1.0;
 			for(j=0;j<nr;++j) {
 				double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
 				weight = weight * t;
 			}
-			printf("weight = %f\n", weight);
+// printf("weight = %f\n", weight);
 			bool flag = get_weighted_likelihood_solution(y_temp, n, detail, prior);
 			throws = trials; /* return the number of trials required for convergence */
 			status = flag ? 1 : 0;
 			tree->Fill();
 		}
 	} else {
-		create_pdfs();
+		TH1D **pdf = create_pdfs(n, nr);
 		for(trial=0;trial<ntrials;++trial) {
+			if(trial && ((trial % 1000000) == 0)) printf("%d/%d processed\n", trial, ntrials);
 			for(int i=0;i<max_trials;++i) {
-				for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from the PDF */
-				flag = get_maximum_likelihood_solution(y_temp, mu); /* y_temp = mu X Rinv. for Theta-function test */
-				if(flag == false) continue; /* jsv. where does this happen where it fails? */
-				flag = false; /* assume theta-function yields 1 */
-				for(i=0;i<nt;++i) { if(ytemp[i] <= 0.0) { flag = true; break; } } /* Theta-function yields 0 */
-				if(flag) continue; /* Theta = 0 */
-				else break; /* we have a good candidate */
+				for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from PDF */
+				bool flag = get_maximum_likelihood_solution(y_temp, mu); /* y_temp = mu X Rinv */
+				if(flag) break; /* found positive-definite solution */ 
 			}
+// for(i=0;i<nt;++i) printf("y(%d) = %f. mu = %f\n", i, y_temp[i], mu[i]);
+			throws = i;
+			status = (i == max_trials) ? 0 : 1;
+			tree->Fill();
 		}
+		for(i=0;i<nr;++i) { delete pdf[i]; }
+		delete [] pdf;
 	}
 
 /* close out the ntuple */
