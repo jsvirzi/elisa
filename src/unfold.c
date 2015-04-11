@@ -1745,6 +1745,7 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	double *y_input = new double [ nt ];
 	double *y_temp = new double [ nt ];
 	double *mu = new double [ nr ];
+	double *F = new double [ nt ];
 	double weight;
 
 /* for normalizing the Poisson weights */
@@ -1785,6 +1786,7 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	tree->Branch("dim", &nt, "dim/I");
 	tree->Branch("y_input", y_input, "y_input[dim]/D");
 	tree->Branch("y", y_temp, "y[dim]/D");
+	tree->Branch("F", F, "F[dim]/D");
 
 	if(prior) {
 		for(trial=0;trial<ntrials;++trial) {
@@ -1806,12 +1808,13 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 		TH1D **pdf = create_pdfs(n, nr);
 		for(trial=0;trial<ntrials;++trial) {
 			if(trial && ((trial % 1000000) == 0)) printf("%d/%d processed\n", trial, ntrials);
-			for(int i=0;i<max_trials;++i) {
+			for(i=0;i<max_trials;++i) {
 				for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from PDF */
 				bool flag = get_maximum_likelihood_solution(y_temp, mu); /* y_temp = mu X Rinv */
 				if(flag) break; /* found positive-definite solution */ 
 			}
 // for(i=0;i<nt;++i) printf("y(%d) = %f. mu = %f\n", i, y_temp[i], mu[i]);
+ 			for(i=0;i<nt;++i) F[i] = y_temp[i] * weight;
 			throws = i;
 			status = (i == max_trials) ? 0 : 1;
 			tree->Fill();
@@ -1827,6 +1830,7 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	fp->Close();
 	delete fp;
 
+	delete [] F;
 	delete [] mu;
 	delete [] y_temp;
 	delete [] y_input;
