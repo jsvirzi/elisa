@@ -781,29 +781,34 @@ bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, d
 bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail) {
 	int i, j, k, trial;
 	int counter = counter0;
+	double *mu = new double [ nr ];
+	double *v = new double [ nr ];
 	double *ytemp = new double [ nt ];
-	double *ycand = new double [ nr ];
-	double *ysave = new double [ nr ];
+	double *ncand = new double [ nr ];
+	double *nsave = new double [ nr ];
+
+/* initialize the ntuple */
+	int status = Intermediate;
+	TTree *tree = 0;
+	TFile *fp = 0;
+	bool save_intermediate = intermediate_results_file.length() ? true : false;
 
 	trials = -1; /* nothing good has happened yet */
 
 	TH1D **pdf = create_pdfs(n, nr);
-	// printf("get_elisa(%x, %x) with NT=%d NR=%d\n", y, n, nt, nr);
 
-#define JSVDEBUG 0
-// #if JSVDEBUG 
-/* write them out for now */
-	// TFile fp("pdf_elisa.root", "recreate");
-	// for(i=0;i<nr;++i) { pdf[i]->Write(); }
-	// fp.Write();
-	// fp.Close();
-// #endif
+	if(save_intermediate) {
+		fp = new TFile(intermediate_results_file.c_str(), "update");
+		tree = new TTree("solution", "solution");
+		tree->Branch("status", &status, "status/I");
+		tree->Branch("dim", &nt, "dim/I");
+		tree->Branch("n", mu, "n[dim]/D");
+		tree->Branch("y", ytemp, "y[dim]/D");
+	}
 
-	double *mu = new double [ nr ];
-	double *v = new double [ nr ];
 	double a = 0;
 	for(i=0;i<nr;++i) { v[i] = 0.0; }
-	for(i=0;i<nt;++i) { ysave[i] = ycand[i] = 0.0; }
+	for(i=0;i<nt;++i) { nsave[i] = ncand[i] = 0.0; }
 	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i][j] = 0.0; } 
 	bool converge = false, flag;
 	for(trial=0;trial<max_trials;++trial) {
@@ -816,6 +821,8 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 		for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); }
 		flag = get_maximum_likelihood_solution(ytemp, mu); /* ytemp = mu X Rinv. for Theta-function test */
 		if(flag == false) continue; /* solution must be positive-definite */
+
+		if(tree) tree->Fill();
 
 		// for(i=0;i<nr;++i) printf("BIN(%d) : MU = %f. Y = %f. ACC = %f\n", i, mu[i], ytemp[i], ycand[i]);
 		// getchar();
@@ -835,16 +842,16 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 		}
 
 		for(j=0;j<nr;++j) {
-			ysave[j] = ycand[j]; /* save previous state */
-			ycand[j] = v[j] / a; /* new state */
+			nsave[j] = ncand[j]; /* save previous state */
+			ncand[j] = v[j] / a; /* new state */
 		}; 
 
 		converge = true; /* assume convergence */
 		for(j=0;j<nr;++j) {
-			double y_old = ysave[j];
-			double y_new = ycand[j];
-			double y_ave = 0.5 * (y_new + y_old);
-			if(fabs(y_old - y_new) > epsilon * y_ave) { 
+			double n_old = nsave[j];
+			double n_new = ncand[j];
+			double n_ave = 0.5 * (n_new + n_old);
+			if(fabs(n_old - n_new) > epsilon * n_ave) { 
 				converge = false; /* no convergence yet */
 				counter = counter0; /* reset counter */
 				break; /* no need to continue after decision about no convergence */
@@ -855,8 +862,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 			--counter; /* count down */
 			if(counter == 0) { /* enough successive trials have converged */ 
 				printf("convergence criteria reached with %d trials!\n", trial); 
-				get_maximum_likelihood_solution(y, ycand);
-				// for(i=0;i<nt;++i) y[i] = ycand[i]; /* jsv */
+				get_maximum_likelihood_solution(y, ncand);
 				if(detail) {
 				/* jsv. is assumption about the y-convergence valid for A, B and C? */
 					for(j=0;j<nr;++j) { A[j] = A[j] / a; }
@@ -868,6 +874,14 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 			}
 		}
 
+	}
+
+	if(save_intermediate) {
+		fp->cd();
+		tree->Write();
+		fp->Write();
+		fp->Close();
+		delete fp;
 	}
 
 #if 0
@@ -910,8 +924,8 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 	delete [] mu;
 	delete [] v;
 	delete [] ytemp;
-	delete [] ycand;
-	delete [] ysave;
+	delete [] ncand;
+	delete [] nsave;
 	for(i=0;i<nr;++i) { delete pdf[i]; }
 	delete [] pdf;
 
@@ -1745,7 +1759,6 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	double *y_input = new double [ nt ];
 	double *y_temp = new double [ nt ];
 	double *mu = new double [ nr ];
-	double *F = new double [ nt ];
 	double weight;
 
 /* for normalizing the Poisson weights */
@@ -1786,7 +1799,6 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	tree->Branch("dim", &nt, "dim/I");
 	tree->Branch("y_input", y_input, "y_input[dim]/D");
 	tree->Branch("y", y_temp, "y[dim]/D");
-	tree->Branch("F", F, "F[dim]/D");
 
 	if(prior) {
 		for(trial=0;trial<ntrials;++trial) {
@@ -1814,7 +1826,6 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 				if(flag) break; /* found positive-definite solution */ 
 			}
 // for(i=0;i<nt;++i) printf("y(%d) = %f. mu = %f\n", i, y_temp[i], mu[i]);
- 			for(i=0;i<nt;++i) F[i] = y_temp[i] * weight;
 			throws = i;
 			status = (i == max_trials) ? 0 : 1;
 			tree->Fill();
@@ -1830,7 +1841,6 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	fp->Close();
 	delete fp;
 
-	delete [] F;
 	delete [] mu;
 	delete [] y_temp;
 	delete [] y_input;
