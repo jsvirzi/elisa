@@ -1754,7 +1754,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 }
 
 bool Unfold::error_analysis(int ntrials, const char *file) {
-	int i, j, trial, throws, status;
+	int i, j, k, trial, throws, status;
 	bool detail = false;
 	double *y_input = new double [ nt ];
 	double *y_temp = new double [ nt ];
@@ -1802,32 +1802,37 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 
 	if(prior) {
 		for(trial=0;trial<ntrials;++trial) {
-			for(i=0;i<nt;++i) { y_temp[i] = y_input[i] = prior[i]->GetRandom(); }
-			calculate_response(y_temp, mu);
+			if(trial && ((trial % 1000000) == 0)) printf("%d/%d processed\n", trial, ntrials);
+			for(k=0;k<max_trials;++k) {
+				for(i=0;i<nt;++i) { y_temp[i] = y_input[i] = prior[i]->GetRandom(); }
+				calculate_response(y_temp, mu);
 // for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
-			weight = 1.0;
-			for(j=0;j<nr;++j) {
-				double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
-				weight = weight * t;
-			}
+				weight = 1.0;
+				for(j=0;j<nr;++j) {
+					double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
+					weight = weight * t;
+				}
 // printf("weight = %f\n", weight);
-			bool flag = get_weighted_likelihood_solution(y_temp, n, detail, prior);
-			throws = trials; /* return the number of trials required for convergence */
-			status = flag ? 1 : 0;
+				bool flag = get_maximum_likelihood_solution(y_temp, mu);
+				if(flag) break; /* found positive-definite solution */ 
+			}
+/* jsv. TODO this should always have just k = 1. the "flag" doesn't ever fail */
+			throws = k; /* return the number of trials required for convergence */
+			status = (k == max_trials) ? 0 : 1;
 			tree->Fill();
 		}
 	} else {
 		TH1D **pdf = create_pdfs(n, nr);
 		for(trial=0;trial<ntrials;++trial) {
 			if(trial && ((trial % 1000000) == 0)) printf("%d/%d processed\n", trial, ntrials);
-			for(i=0;i<max_trials;++i) {
+			for(k=0;k<max_trials;++k) {
 				for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from PDF */
 				bool flag = get_maximum_likelihood_solution(y_temp, mu); /* y_temp = mu X Rinv */
 				if(flag) break; /* found positive-definite solution */ 
 			}
 // for(i=0;i<nt;++i) printf("y(%d) = %f. mu = %f\n", i, y_temp[i], mu[i]);
-			throws = i;
-			status = (i == max_trials) ? 0 : 1;
+			throws = k;
+			status = (k == max_trials) ? 0 : 1;
 			tree->Fill();
 		}
 		for(i=0;i<nr;++i) { delete pdf[i]; }
