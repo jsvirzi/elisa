@@ -980,6 +980,112 @@ TH1D **Unfold::create_pdfs(double *n, int nr) {
 
 }
 
+TH1D **Unfold::create_pdfs(TH1D **prior, int nthrows, const char *file, const char *name) {
+
+	char str[1024];
+	int i, j, bin, nbins = 250;
+	double x, acc, width;
+	double *x_min = new double [ nt ], *x_max = new double [ nt ];
+	double *mu = new double [ nr ], *theta = new double [ nt ];
+
+/* initialize min/max to absurd values */
+	for(i=0;i<nt;++i) { x_min[i] = 9999999.0; x_max[i] = -9999999.0; }
+
+	TH1D **pdf = create_pdfs(n, nr);
+
+/* use MLE to estimate the boundaries */
+	int imle, nmles = 1000000;
+	for(imle=0;imle<nmles;++imle) {
+		if(imle && ((imle % 1000000) == 0)) printf("MLE: %d/%d processed\n", imle, nmles);
+		int itrial, ntrials = 100000;
+		bool flag = false;
+		for(itrial=0;itrial<ntrials;++itrial) {
+			if(itrial && ((itrial % 1000000) == 0)) printf("MLE %d => %d/%d processed\n", imle, itrial, ntrials);
+			for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from PDF */
+			flag = get_maximum_likelihood_solution(theta, mu); /* y_temp = mu X Rinv */
+			if(flag) break; /* found positive-definite solution */ 
+		}
+		if(flag == false) { printf("no solution found after %d throws\n", itrial); continue; }
+		
+		for(i=0;i<nt;++i) {
+			if(theta[i] < x_min[i]) x_min[i] = theta[i];
+			if(theta[i] > x_max[i]) x_max[i] = theta[i];
+		}
+
+	}
+
+	for(i=0;i<nr;++i) delete pdf[i];
+	delete [] pdf;
+	pdf = new TH1D * [ nr ];
+
+	for(i=0;i<nt;++i) {
+		printf("from likelihood consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
+	}
+
+	for(i=0;i<nt;++i) {
+		double a_min = prior[i]->GetXaxis()->GetXmin();
+		if(a_min < x_min[i]) x_min[i] = a_min;
+		double a_max = prior[i]->GetXaxis()->GetXmax();
+		if(a_max > x_max[i]) x_max[i] = a_max;
+
+		if(x_min[i] <= 0.0) x_min[i] = 0.01; /* jsv TODO figure if configurable. stay away from 0? */
+
+printf("after priors consideration x = [%f, %f]\n", x_min[i], x_max[i]); 
+
+	}
+
+	double *prior_prob = new double [ nr ];
+	// calculate_response(prior_mean, mu);
+	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], n[j]); 
+
+/* create the pdfs but don't fill them yet */
+	for(i=0;i<nr;++i) {
+		sprintf(str, "PDF_bin%d", i);
+		pdf[i] = new TH1D(str, "PDF", nbins, x_min[i], x_max[i]); 
+		pdf[i]->SetDirectory(0);
+	}
+
+/* now fill them */
+	int ithrow;
+	printf("processing %d\n", nthrows);
+	for(ithrow=0;ithrow<nthrows;++ithrow) {
+		if(ithrow && ((ithrow % 1000000) == 0)) printf("PDF %d/%d processed\n", ithrow, nthrows);
+		for(i=0;i<nt;++i) theta[i] = rndm->Uniform(x_min[i], x_max[i]);
+		calculate_response(theta, mu);
+// for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
+		double weight0 = 1.0;
+		for(j=0;j<nr;++j) {
+			double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
+			weight0 = weight0 * t;
+		}
+
+		for(i=0;i<nt;++i) {
+			int bin = prior[i]->FindBin(theta[i]);
+			double weight = prior[i]->GetBinContent(bin);
+			pdf[i]->Fill(theta[i], weight * weight0);
+		}
+	}
+
+	delete [] mu;
+	delete [] theta;
+	delete [] x_min;
+	delete [] x_max;
+
+	if(file) {
+		TFile fp(file, "update");
+		for(j=0;j<nr;++j) {
+			if(name) sprintf(str, "%s%d", name, j);
+			else sprintf(str, "bin%d", j);
+			pdf[j]->Write(str); 
+		}
+		fp.Write();
+		fp.Close();
+	}
+
+	return pdf;
+
+}
+
 #if 0
 
 /* jsv. Can we get rid of ytemp below? */
@@ -1746,6 +1852,123 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	delete [] ysave;
 	delete [] prior_mean;
 	delete [] prior_prob;
+
+	trials = trial; /* return the number of trials required for convergence */
+
+	return converge && (trials < max_trials);
+
+}
+
+/* unified */
+bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file) {
+	int i, j, k, trial;
+	int counter = counter0;
+	char str[1024];
+	double *theta = new double [ nt ];
+	double *v = new double [ nt ];
+	double *vcand = new double [ nt ];
+	double *vsave = new double [ nt ];
+	double *A = 0, *B = 0, *C = 0;
+
+	int status = Intermediate;
+
+	TFile *fp = 0;
+	TTree *tree = 0;
+
+/* initialize the ntuple */
+	if(file) {
+		fp = new TFile(file, "update");
+		tree = new TTree("solution", "solution");
+		tree->Branch("status", &status, "status/I");
+		sprintf(str, "y[%d]/D", nt);
+		tree->Branch("y", theta, str);
+		if(detail) {
+			A = new double [ nt ];
+			sprintf(str, "A[%d]/D", nt);
+			tree->Branch("A", A, str);
+
+			B = new double [ nt ];
+			sprintf(str, "B[%d]/D", nt);
+			tree->Branch("B", B, str);
+
+			C = new double [ nt * nt ];
+			sprintf(str, "C[%d]/D", nt * nt);
+			tree->Branch("C", C, str);
+		}
+	}
+
+	for(i=0;i<nt;++i) { v[i] = vsave[i] = vcand[i] = 0.0; }
+	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i*nt+j] = 0.0; } 
+	bool converge = false;
+	trials = -1; /* nothing good has happened yet */
+	for(trial=0;trial<max_trials;++trial) {
+
+		if(progress_report_frequency && ((trial % progress_report_frequency) == 0)) {
+			printf("%d pass. %d total\n", trial, max_trials);
+		}
+
+	/* draw random solution from the PDFs */
+		for(i=0;i<nt;++i) { theta[i] = pdf[i]->GetRandom(); }
+		for(i=0;i<nt;++i) { v[i] += theta[i]; }
+		++trial;
+
+		if(detail) {
+			for(i=0;i<nr;++i) {
+				double s = theta[i];
+				double t = TMath::Log(s);
+				A[i] = s; /* not incrementing += s */ 
+				B[i] = t; /* not incrementing += t */
+				for(j=0;j<nr;++j) C[j * nt + i] = theta[j] * t; /* not incrementing */
+			}
+		}
+
+		if(tree) tree->Fill();
+
+		for(j=0;j<nr;++j) {
+			vsave[j] = vcand[j]; /* save previous state */
+			if(!converge) vcand[j] = v[j] / trial; 
+		}; 
+
+		converge = true; /* assume convergence */
+		for(j=0;j<nr;++j) {
+			double v_old = vsave[j];
+			double v_new = vcand[j];
+			double v_ave = 0.5 * (v_new + v_old);
+			if(fabs(v_old - v_new) > epsilon * v_ave) { 
+				converge = false; /* no convergence yet */
+				counter = counter0; /* reset counter */
+				break; /* no need to continue after decision about no convergence */
+			}
+		}; 
+
+		if(require_convergence && converge) {
+			--counter; /* count down */
+			if(counter == 0) { /* enough successive trials have converged */ 
+				if(verbose) printf("convergence criteria reached with %d trials!\n", trial); 
+				for(i=0;i<nt;++i) y[i] = vcand[i]; 
+				break;
+			}
+		}
+
+	}
+
+/* close out the ntuple */
+	if(fp && tree) {
+		fp->cd();
+		tree->Write();
+		fp->Write();
+		fp->Close();
+		// delete tree; /* ROOT owns this */
+		delete fp;
+	}
+
+	delete [] theta;
+	delete [] v;
+	delete [] vcand;
+	delete [] vsave;
+	if(A) delete [] A;
+	if(B) delete [] B;
+	if(C) delete [] C;
 
 	trials = trial; /* return the number of trials required for convergence */
 

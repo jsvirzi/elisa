@@ -33,6 +33,9 @@ class Unfold {
 		CentralValue,
 		InputValue,
 		PoissonExtraction,
+		PoissonExtractionUsingCentralValue,
+		PoissonExtractionUsingTruth,
+		Intermediate,
 		NBiasNtupleOptions
 	} BiasNtupleOptions;
 
@@ -72,10 +75,12 @@ class Unfold {
 	// jsv clashes with other run() bool run(double *prior_mean, double *prior_width, int option = 0, bool detail = false);
 	bool get_weighted_likelihood_solution(double *y, double *n, bool detail);
 	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, TH1D **prior);
-	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, double *prior_mean, double *prior_width);
+	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file);
+	// bool get_weighted_likelihood_solution(double *y, double *n, bool detail, double *prior_mean, double *prior_width);
 	bool get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess);
 	TH1D **create_pdfs(double *n, int nr);
-	TH1D **create_pdfs(double **Rinv, TH1D **pdf0, int nr);
+	TH1D **create_pdfs(TH1D **prior = 0, int nthrows = 2000000000, const char *file = 0, const char *name = 0);
+	// TH1D **create_pdfs(double **Rinv, TH1D **pdf0, int nr);
 	// bool get_maximum_likelihood_solution(double *y);
 	bool get_maximum_likelihood_solution(double *y = 0, double *n = 0);
 	bool bootstrap(double *n = 0);
@@ -90,6 +95,13 @@ class Unfold {
 	bool statistical_analysis(int ntrials, int option, const char *file,
 		bool detail = false, int dR_options = ResponseMatrixVariationNone, double dR_nom = 0.0);
 	bool error_analysis(int ntrials, const char *file);
+	bool save_intermediate(const char *file) { intermediate_results_file = file; return true; }
+	bool save_intermediate(std::string file) { intermediate_results_file = file; return true; }
+	bool save_intermediate(bool flag, const char *file) { 
+		if(flag == false) intermediate_results_file = ""; 
+		else intermediate_results_file = file; 
+		return true;
+	}
 	bool calculate_response(double *y, double *mu, double **R = 0);
 	double closure_test();
 	bool set_iterations(int iterations) { this->iterations = iterations; };
@@ -98,6 +110,7 @@ class Unfold {
 
 	private:
 
+	std::string intermediate_results_file;
 	double *make_guess(int option);
 	bool write_basic_info(const char *file);
 	bool true_uf, true_ov, meas_uf, meas_ov;

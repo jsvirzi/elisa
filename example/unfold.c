@@ -9,10 +9,13 @@ bool debug = false, verbose = false;
 
 int main(int argc, char **argv) {
 
-	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname, efile;
+	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname, efile, ifile,
+		pdf_ofile, pdf_oname;
 	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0, nerrm = 0;
+	int pdf_throws = 0;
 	double epsilon = 0.001;
-	bool covariance = false, bootstrap = false, truth = false, use_prior = false, error_analysis;
+	bool covariance = false, bootstrap = false, truth = false, use_prior = false, 
+		save_intermediate = false, create_pdfs = false;
 
 /* defaults */
 	rfile = "example/response_matrix.dat";
@@ -33,7 +36,13 @@ int main(int argc, char **argv) {
 		} else if(strcmp("-r", argv[i]) == 0) { rfile = argv[++i]; /* response matrix */
 		} else if(strcmp("-meas", argv[i]) == 0) { dfile = argv[++i]; dname = argv[++i]; /* the data */
 		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; truth = true; 
+		} else if(strcmp("-save_intermediate", argv[i]) == 0) { ifile = argv[++i]; save_intermediate = true; 
 		} else if(strcmp("-prior", argv[i]) == 0) { pfile = argv[++i]; pname = argv[++i]; use_prior = true; 
+		} else if(strcmp("-create_pdfs", argv[i]) == 0) { 
+			pdf_throws = atoi(argv[++i]);
+			pdf_ofile = argv[++i]; 
+			pdf_oname = argv[++i];
+			create_pdfs = true; 
 		} else if(strcmp("-trials", argv[i]) == 0) { max_trials = atoi(argv[++i]); 
 		} else if(strcmp("-error_analysis", argv[i]) == 0) { 
 			nerrm= atoi(argv[++i]); /* number of pseudo-experiments */
@@ -70,6 +79,7 @@ int main(int argc, char **argv) {
 		unfold->set_progress_report_frequency(10000); /* avoid excessive output to screen */
 	} else if(algorithm == Unfold::Elisa) {
 		// unfold->set_progress_report_frequency(10000); /* avoid excessive output to screen */
+		unfold->save_intermediate(save_intermediate, ifile.c_str());
 	}
 	if(seed) {
 		unfold->set_seed(seed);
@@ -101,7 +111,15 @@ int main(int argc, char **argv) {
 		unfold->set_prior(prior);
 	}
 
+	if(create_pdfs) {
+		printf("creating pdf with %d throws. file = %s. name = %s\n", pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str());
+		unfold->create_pdfs(prior, pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str());
+		return 0;
+	}
+
 	unfold->run(option);
+
+	unfold->save_intermediate(false, 0); /* turn off saving intermediate results */
 
 	for(i=0;i<nr;++i) { printf("UNFOLDED(%d) = %f\n", i, y[i]); }
 
