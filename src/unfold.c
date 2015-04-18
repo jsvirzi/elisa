@@ -1070,6 +1070,7 @@ printf("after priors consideration x = [%f, %f]\n", x_min[i], x_max[i]);
 	delete [] theta;
 	delete [] x_min;
 	delete [] x_max;
+	delete [] prior_prob;
 
 	if(file) {
 		TFile fp(file, "update");
