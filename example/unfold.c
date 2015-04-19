@@ -7,6 +7,27 @@
 
 bool debug = false, verbose = false;
 
+/* jsv. read from file */
+#define NBINS 12
+struct {
+	int bin, nbins;
+	double x_min, x_max;
+} pdf_info[NBINS+1] = {
+	{0, 250, 1759000, 1778000},
+	{1, 250, 1426000, 1442000},
+	{2, 250, 546200, 556000},
+	{3, 250, 172300, 179000},
+	{4, 250, 49000, 53000},
+	{5, 250, 12700, 14900},
+	{6, 250, 3000, 4200},
+	{7, 250, 550, 1250},
+	{8, 250, 90, 400},
+	{9, 250, 0, 140},
+	{10, 250, 0, 40},
+	{11, 250, 0, 25},
+	{0, 0, 0, 0}
+};
+
 int main(int argc, char **argv) {
 
 	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname, efile, ifile,
@@ -15,7 +36,7 @@ int main(int argc, char **argv) {
 	int pdf_throws = 0;
 	double epsilon = 0.001;
 	bool covariance = false, bootstrap = false, truth = false, use_prior = false, 
-		save_intermediate = false, create_pdfs = false;
+		save_intermediate = false, create_pdfs = false, limits_known = false;
 
 /* defaults */
 	rfile = "example/response_matrix.dat";
@@ -112,8 +133,22 @@ int main(int argc, char **argv) {
 	}
 
 	if(create_pdfs) {
-		printf("creating pdf with %d throws. file = %s. name = %s\n", pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str());
-		unfold->create_pdfs(prior, pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str());
+		limits_known = true;
+		double *x_min = 0, *x_max = 0;
+		int *nbins = 0;
+		printf("creating pdfs with %d throws. file = %s. name = %s\n", pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str());
+		if(limits_known) {
+			x_min = new double [ NBINS ];
+			x_max = new double [ NBINS ];
+			nbins = new int [ NBINS];
+			for(i=0;i<NBINS;++i) {
+				x_min[i] = pdf_info[i].x_min;
+				x_max[i] = pdf_info[i].x_max;
+				nbins[i] = pdf_info[i].nbins;
+				printf("LIMIT(%d) = %d [%f, %f]\n", i, nbins[i], x_min[i], x_max[i]);
+			}
+		}
+		unfold->create_pdfs(prior, pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str(), nbins, x_min, x_max);
 		return 0;
 	}
 

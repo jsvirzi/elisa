@@ -980,68 +980,78 @@ TH1D **Unfold::create_pdfs(double *n, int nr) {
 
 }
 
-TH1D **Unfold::create_pdfs(TH1D **prior, int nthrows, const char *file, const char *name) {
+/* the preferred method */
+TH1D **Unfold::create_pdfs(TH1D **prior, int nthrows, const char *file, const char *name,
+	int *nbins, double *x_min, double *x_max) {
 
 	char str[1024];
-	int i, j, bin, nbins = 250;
+	int i, j, bin;
 	double x, acc, width;
-	double *x_min = new double [ nt ], *x_max = new double [ nt ];
 	double *mu = new double [ nr ], *theta = new double [ nt ];
+	bool delete_x = false;
+	TH1D **pdf = 0;
 
-/* initialize min/max to absurd values */
-	for(i=0;i<nt;++i) { x_min[i] = 9999999.0; x_max[i] = -9999999.0; }
+	if(x_min == 0 && x_max == 0 && nbins == 0) {
+		x_min = new double [ nt ];
+		x_max = new double [ nt ];
+		nbins = new int [ nt ];
+		delete_x = true;
 
-	TH1D **pdf = create_pdfs(n, nr);
+	/* initialize min/max to absurd values. nbins to a reasonable value */
+		for(i=0;i<nt;++i) { x_min[i] = 9999999.0; x_max[i] = -9999999.0; }
+		for(i=0;i<nt;++i) { nbins[i] = 250; }
 
-/* use MLE to estimate the boundaries */
-	int imle, nmles = 1000000;
-	for(imle=0;imle<nmles;++imle) {
-		if(imle && ((imle % 1000000) == 0)) printf("MLE: %d/%d processed\n", imle, nmles);
-		int itrial, ntrials = 100000;
-		bool flag = false;
-		for(itrial=0;itrial<ntrials;++itrial) {
-			if(itrial && ((itrial % 1000000) == 0)) printf("MLE %d => %d/%d processed\n", imle, itrial, ntrials);
-			for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from PDF */
-			flag = get_maximum_likelihood_solution(theta, mu); /* y_temp = mu X Rinv */
-			if(flag) break; /* found positive-definite solution */ 
-		}
-		if(flag == false) { printf("no solution found after %d throws\n", itrial); continue; }
+		pdf = create_pdfs(n, nr);
+
+	/* use MLE to estimate the boundaries */
+		int imle, nmles = 1000000;
+		for(imle=0;imle<nmles;++imle) {
+			if(imle && ((imle % 1000000) == 0)) printf("MLE: %d/%d processed\n", imle, nmles);
+			int itrial, ntrials = 100000;
+			bool flag = false;
+			for(itrial=0;itrial<ntrials;++itrial) {
+				if(itrial && ((itrial % 1000000) == 0)) printf("MLE %d => %d/%d processed\n", imle, itrial, ntrials);
+				for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from PDF */
+				flag = get_maximum_likelihood_solution(theta, mu); /* y_temp = mu X Rinv */
+				if(flag) break; /* found positive-definite solution */ 
+			}
+			if(flag == false) { printf("no solution found after %d throws\n", itrial); continue; }
 		
-		for(i=0;i<nt;++i) {
-			if(theta[i] < x_min[i]) x_min[i] = theta[i];
-			if(theta[i] > x_max[i]) x_max[i] = theta[i];
+			for(i=0;i<nt;++i) {
+				if(theta[i] < x_min[i]) x_min[i] = theta[i];
+				if(theta[i] > x_max[i]) x_max[i] = theta[i];
+			}
 		}
 
+		for(i=0;i<nt;++i) printf("from likelihood consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
+
+		for(i=0;i<nt;++i) {
+			double a_min = prior[i]->GetXaxis()->GetXmin();
+			if(a_min < x_min[i]) x_min[i] = a_min;
+			double a_max = prior[i]->GetXaxis()->GetXmax();
+			if(a_max > x_max[i]) x_max[i] = a_max;
+
+			if(x_min[i] <= 0.0) x_min[i] = 0.01; /* jsv TODO figure if configurable. stay away from 0? */
+
+		}
+
+		for(i=0;i<nt;++i) printf("after priors consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
+
+	/* clean up */
+		for(i=0;i<nr;++i) delete pdf[i];
+		delete [] pdf;
 	}
 
-	for(i=0;i<nr;++i) delete pdf[i];
-	delete [] pdf;
 	pdf = new TH1D * [ nr ];
 
-	for(i=0;i<nt;++i) {
-		printf("from likelihood consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
-	}
-
-	for(i=0;i<nt;++i) {
-		double a_min = prior[i]->GetXaxis()->GetXmin();
-		if(a_min < x_min[i]) x_min[i] = a_min;
-		double a_max = prior[i]->GetXaxis()->GetXmax();
-		if(a_max > x_max[i]) x_max[i] = a_max;
-
-		if(x_min[i] <= 0.0) x_min[i] = 0.01; /* jsv TODO figure if configurable. stay away from 0? */
-
-printf("after priors consideration x = [%f, %f]\n", x_min[i], x_max[i]); 
-
-	}
-
 	double *prior_prob = new double [ nr ];
-	// calculate_response(prior_mean, mu);
 	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], n[j]); 
 
 /* create the pdfs but don't fill them yet */
-	for(i=0;i<nr;++i) {
-		sprintf(str, "PDF_bin%d", i);
-		pdf[i] = new TH1D(str, "PDF", nbins, x_min[i], x_max[i]); 
+	for(i=0;i<nt;++i) {
+		if(name) sprintf(str, "%s%d", name, i);
+		else sprintf(str, "pdf_bin%d", i);
+		pdf[i] = new TH1D(str, "PDF", nbins[i], x_min[i], x_max[i]); 
 		pdf[i]->SetDirectory(0);
 	}
 
@@ -1068,17 +1078,16 @@ printf("after priors consideration x = [%f, %f]\n", x_min[i], x_max[i]);
 
 	delete [] mu;
 	delete [] theta;
-	delete [] x_min;
-	delete [] x_max;
+	if(delete_x) { /* we allocated the space */
+		delete [] x_min;
+		delete [] x_max;
+		delete [] nbins;
+	}
 	delete [] prior_prob;
 
 	if(file) {
 		TFile fp(file, "update");
-		for(j=0;j<nr;++j) {
-			if(name) sprintf(str, "%s%d", name, j);
-			else sprintf(str, "bin%d", j);
-			pdf[j]->Write(str); 
-		}
+		for(i=0;i<nt;++i) pdf[i]->Write(); 
 		fp.Write();
 		fp.Close();
 	}

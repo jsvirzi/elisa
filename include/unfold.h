@@ -79,7 +79,8 @@ class Unfold {
 	// bool get_weighted_likelihood_solution(double *y, double *n, bool detail, double *prior_mean, double *prior_width);
 	bool get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess);
 	TH1D **create_pdfs(double *n, int nr);
-	TH1D **create_pdfs(TH1D **prior = 0, int nthrows = 2000000000, const char *file = 0, const char *name = 0);
+	TH1D **create_pdfs(TH1D **prior = 0, int nthrows = 2000000000, const char *file = 0, const char *name = 0,
+		int *nbins = 0, double *x_min = 0, double *x_max = 0); 
 	// TH1D **create_pdfs(double **Rinv, TH1D **pdf0, int nr);
 	// bool get_maximum_likelihood_solution(double *y);
 	bool get_maximum_likelihood_solution(double *y = 0, double *n = 0);
