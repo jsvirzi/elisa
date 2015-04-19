@@ -1108,12 +1108,13 @@ TH1D **Unfold::create_theta_pdfs(bool bias_removal, TH1D **prior, int nthrows, c
 			weight0 = weight0 * t;
 		}
 
-		if(prior) {
-			for(i=0;i<nt;++i) {
+		for(i=0;i<nt;++i) {
+			double weight = weight0;
+			if(prior) {
 				int bin = prior[i]->FindBin(theta[i]);
-				double weight = prior[i]->GetBinContent(bin);
-				pdf[i]->Fill(theta[i], weight * weight0);
+				weight = weight * prior[i]->GetBinContent(bin);
 			}
+			pdf[i]->Fill(theta[i], weight);
 		}
 	}
 
