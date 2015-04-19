@@ -35,8 +35,8 @@ int main(int argc, char **argv) {
 	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0, nerrm = 0;
 	int pdf_throws = 0;
 	double epsilon = 0.001;
-	bool covariance = false, bootstrap = false, truth = false, use_prior = false, 
-		save_intermediate = false, create_pdfs = false, limits_known = false;
+	bool covariance = false, bootstrap = false, truth = false, use_prior = false, use_pdf = false,
+		save_intermediate = false, create_pdfs = false, limits_known = false, expert = false;
 
 /* defaults */
 	rfile = "example/response_matrix.dat";
@@ -54,11 +54,13 @@ int main(int argc, char **argv) {
 	for(int i=1;i<argc;++i) {
 		if(strcmp("-debug", argv[i]) == 0) { debug = true;
 		} else if(strcmp("-verbose", argv[i]) == 0) { verbose = true;
+		} else if(strcmp("-expert", argv[i]) == 0) { expert = true;
 		} else if(strcmp("-r", argv[i]) == 0) { rfile = argv[++i]; /* response matrix */
 		} else if(strcmp("-meas", argv[i]) == 0) { dfile = argv[++i]; dname = argv[++i]; /* the data */
 		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; truth = true; 
 		} else if(strcmp("-save_intermediate", argv[i]) == 0) { ifile = argv[++i]; save_intermediate = true; 
 		} else if(strcmp("-prior", argv[i]) == 0) { pfile = argv[++i]; pname = argv[++i]; use_prior = true; 
+		} else if(strcmp("-pdf", argv[i]) == 0) { pfile = argv[++i]; pname = argv[++i]; use_pdf = true; 
 		} else if(strcmp("-create_pdfs", argv[i]) == 0) { 
 			pdf_throws = atoi(argv[++i]);
 			pdf_ofile = argv[++i]; 
@@ -90,6 +92,11 @@ int main(int argc, char **argv) {
 	printf("unfolding [%s]\n", dname.c_str());
 	printf("convergence criteria = %f\n", epsilon);
 
+	if(use_pdf && use_prior) {
+		printf("conflicting options chosen. pdf = true and prior = true\n");
+		return 1;
+	}
+
 	Unfold *unfold = 0;
 	if(algorithm < 0) { unfold = new Unfold(Unfold::Elisa, name.c_str()); } 
 	else { unfold = new Unfold(algorithm, name.c_str()); }
@@ -112,9 +119,8 @@ int main(int argc, char **argv) {
 	if(bootstrap) unfold->bootstrap(); /* create new sample bootstrapped from input sample */
 	if(tname.length()) unfold->set_true(tfile.c_str(), tname.c_str());
 	double *n = unfold->get_meas();
-	double *y_true = unfold->get_true();
-	double *y = unfold->get_solution();
-	for(i=0;i<nr;++i) { printf("MEAS(%d) = %f. TRUE = %f\n", i, n[i], y_true[i]); }
+	double *ytrue = unfold->get_true();
+	for(i=0;i<nr;++i) { printf("MEAS(%d) = %f. TRUE = %f\n", i, n[i], ytrue[i]); }
 
 	TH1D **prior = 0;
 	if(use_prior) {
@@ -129,13 +135,14 @@ int main(int argc, char **argv) {
 		fp.Close();
 		delete [] str;
 
-		unfold->set_prior(prior);
+		// unfold->set_prior(prior);
 	}
 
 	if(create_pdfs) {
 		limits_known = true;
 		double *x_min = 0, *x_max = 0;
 		int *nbins = 0;
+		bool bias_removal = true; /* subtract 1 from measured spectrum */
 		printf("creating pdfs with %d throws. file = %s. name = %s\n", pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str());
 		if(limits_known) {
 			x_min = new double [ NBINS ];
@@ -148,12 +155,40 @@ int main(int argc, char **argv) {
 				printf("LIMIT(%d) = %d [%f, %f]\n", i, nbins[i], x_min[i], x_max[i]);
 			}
 		}
-		unfold->create_pdfs(prior, pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str(), nbins, x_min, x_max);
+		unfold->create_theta_pdfs(bias_removal, prior, pdf_throws, pdf_ofile.c_str(), pdf_oname.c_str(),
+			nbins, x_min, x_max);
 		return 0;
 	}
 
-	unfold->run(option);
+	TH1D **pdf = 0;
+	if(use_pdf) {
+		char *str = new char [ pname.length() + 32 ];
+		TFile fp(pfile.c_str(), "read");
+		pdf= new TH1D * [ nt ];
+		for(i=0;i<nt;++i) {
+			sprintf(str, "%s%d", pname.c_str(), i);
+			pdf[i] = (TH1D *)fp.Get(str);
+			pdf[i]->SetDirectory(0);
+		}
+		fp.Close();
+		delete [] str;
+	}
 
+	if(expert) {
+		double *ntemp = new double [ nr ];
+		double *ytemp = new double [ nt ];
+		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
+		bool detail = true; /* want A, B and C */
+		bool require_convergence = false; /* we will do our own compilation later */
+		printf("running in expert mode\n");
+		unfold->get_weighted_likelihood_solution(ytemp, ntemp, detail, require_convergence, pdf, ofile.c_str());
+		delete [] ntemp;
+		delete [] ytemp;
+	} else {
+		unfold->run(option);
+	}
+
+	double *y = unfold->get_solution();
 	unfold->save_intermediate(false, 0); /* turn off saving intermediate results */
 
 	for(i=0;i<nr;++i) { printf("UNFOLDED(%d) = %f\n", i, y[i]); }
@@ -193,7 +228,7 @@ return 0;
 #if 0
 	int nt = unfold->get_nt(), nr = unfold->get_nr();
 	double *y = new double [ nt ];
-	double *y_true = new double [ nt ];
+	double *ytrue = new double [ nt ];
 	double *data = new double [ nr ];
 
 	if(covariance) {
@@ -203,11 +238,11 @@ return 0;
 
 	unfold->get_data(data);
 	unfold->get_solution(y);
-	unfold->get_truth(y_true);
+	unfold->get_truth(ytrue);
 	for(int i=0;i<nt;++i) printf("final comparison. bin(%d) (M)WL=%f. TRUE=%f. DIFF=%f. DATA=%f\n", 
-		i, y[i], y_true[i], y[i] / y_true[i], data[i]);
+		i, y[i], ytrue[i], y[i] / ytrue[i], data[i]);
 
-	delete [] y_true;
+	delete [] ytrue;
 	delete [] y;
 	delete [] data;
 
@@ -223,7 +258,7 @@ return 0;
 
 	unfold->get_data(data);
 	unfold->get_solution(y_ml);
-	unfold->get_truth(y_true);
+	unfold->get_truth(ytrue);
 	return 0;
 
 	unfold->echo_parameters();
@@ -235,7 +270,7 @@ return 0;
 		if(tname.length()) unfold->closure_test(tfile.c_str(), tname.c_str());
 	}
 
-	double *y_true = new double [ nt ];
+	double *ytrue = new double [ nt ];
 	double *y_bayes = new double [ nt ];
 	double *y_elisa = new double [ nt ];
 	unfold->get_solution(y_bayes);
@@ -253,7 +288,7 @@ return 0;
 		unfold->write();
 	}
 
-	delete [] y_true;
+	delete [] ytrue;
 
 	return 0;
 

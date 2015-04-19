@@ -309,6 +309,7 @@ bool Unfold::initialize_response_matrix(const char *file) {
 	return stat;
 }
 
+#if 0
 bool Unfold::set_prior(TH1D **prior) {
 	if(this->prior) { /* if priors were previously set, clean up */
 		for(int i=0;i<nt;++i) delete this->prior[i]; 
@@ -321,6 +322,7 @@ bool Unfold::set_prior(TH1D **prior) {
 	}
 	return true;
 }
+#endif
 
 bool Unfold::cleanup() {
 
@@ -687,6 +689,9 @@ bool Unfold::run(int option, bool detail) {
 	return stat;
 }
 
+#if 1
+/* jsv. slated for deletion */
+
 bool Unfold::run(double *y, double *n, int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
@@ -704,6 +709,7 @@ bool Unfold::run(double *y, double *n, int option, bool detail) {
 	}
 	return stat;
 }
+#endif
 
 bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess) {
 
@@ -795,15 +801,16 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 
 	trials = -1; /* nothing good has happened yet */
 
-	TH1D **pdf = create_pdfs(n, nr);
+	TH1D **pdf = create_mu_pdfs(true, n); /* subtract 1 */
 
 	if(save_intermediate) {
 		fp = new TFile(intermediate_results_file.c_str(), "update");
 		tree = new TTree("solution", "solution");
 		tree->Branch("status", &status, "status/I");
-		tree->Branch("dim", &nt, "dim/I");
-		tree->Branch("n", mu, "n[dim]/D");
-		tree->Branch("y", ytemp, "y[dim]/D");
+		sprintf(str, "n[%d]/D", nt);
+		tree->Branch("n", mu, str);
+		sprintf(str, "y[%d]/D", nt);
+		tree->Branch("y", ytemp, str);
 	}
 
 	double a = 0;
@@ -935,53 +942,80 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 
 }
 
-/* create PDFs for random number generation from the likelihood function */
-TH1D **Unfold::create_pdfs(double *n, int nr) {
+/* create PDFs for random number generation from the likelihood function.
+ * these are pdfs for values after response matrix. i.e. - these are "mu" pdfs */
+TH1D **Unfold::create_mu_pdfs(bool bias_removal, double *n, const char *file, const char *name, 
+	int *nbins, double *x_min, double *x_max) {
 
-	// printf("creating PDFs\n");
 	char s[1024];
-	int i, j, bin, nbins = 250;
-	double x, acc, width, x_min, x_max, *a = new double [ nbins ];
+	int i, j, bin;
+	double x, acc, width;
+	bool delete_x = false;
+
+	if(n == 0) n = this->n;
+
+	double *ntemp = new double [ nr ];
+	for(i=0;i<nt;++i) ntemp[i] = bias_removal ? (n[i] - 1.0) : n[i];
+
+	if(x_min == 0 && x_max == 0 && nbins == 0) {
+		delete_x = true;
+		x_min = new double [ nr ];
+		x_max = new double [ nr ];
+		nbins = new int [ nr ];
+		for(i=0;i<nr;++i) {
+			nbins[i] = 250; /* reasonable default */
+			width = 5.0 * sqrt(ntemp[i] + 1.0);
+			x_min[i] = ntemp[i] - width;
+			x_max[i] = ntemp[i] + width;
+			if(x_min[i] < 0.0) x_min[i] = 0.0;
+		}
+	}
+
 	TH1D **pdf = new TH1D * [ nr ];
 	for(i=0;i<nr;++i) {
-		TH1D *h;
-
-		sprintf(s, "pdfn%d", i);
-		width = 4.0 * sqrt(n[i] + 1.0);
-		x_min = n[i] - width;
-		x_max = n[i] + width;
-		if(x_min <= 0.0) x_min = 0.01; /* jsv TODO figure if configurable. stay away from 0? */
-		h = new TH1D(s, "PDF", nbins, x_min, x_max); 
-		h->SetDirectory(0);
-		// printf("i=%d. x = (%f, %f, %f)\n", i, n[i], x_min, x_max); 
+		sprintf(s, "%s%d", i, name);
+		pdf[i] = new TH1D(s, "PDF", nbins[i], x_min[i], x_max[i]); 
+		pdf[i]->SetDirectory(0);
+		// printf("i=%d. x = (%f, %f, %f)\n", i, n[i], x_min[i], x_max[i]); 
 		acc = 0.0;
-		for(j=0;j<nbins;++j) {
+		double *a = new double [ nbins[i] ]; 
+		for(j=0;j<nbins[i];++j) {
 			bin = j + 1;
-			x = h->GetXaxis()->GetBinCenter(bin);
-			a[j] = TMath::Poisson(n[i], x);
+			x = pdf[i]->GetXaxis()->GetBinCenter(bin);
+			a[j] = TMath::Poisson(ntemp[i], x);
 			acc += a[j];
 		}
 
-		for(j=0;j<nbins;++j) {
+		for(j=0;j<nbins[i];++j) {
 			bin = j + 1;
 			a[j] /= acc;
-			h->SetBinContent(bin, a[j]);
+			pdf[i]->SetBinContent(bin, a[j]);
 		}
-
-		pdf[i] = h;
-
+		delete [] a;
 	}
 
-	delete [] a;
+	delete [] ntemp;
 
-	// printf("PDF creation complete\n");
+	if(delete_x) {
+		delete [] x_min;
+		delete [] x_max;
+		delete [] nbins;
+	}
+
+	if(file) {
+		TFile fp(file, "update");
+		for(i=0;i<nt;++i) pdf[i]->Write(); 
+		fp.Write();
+		fp.Close();
+	}
 
 	return pdf;
 
 }
 
-/* the preferred method */
-TH1D **Unfold::create_pdfs(TH1D **prior, int nthrows, const char *file, const char *name,
+/* jsv TODO are the pdf created with n or n-1? */
+/* the preferred method. creates pdfs for theta, not n */
+TH1D **Unfold::create_theta_pdfs(bool bias_removal, TH1D **prior, int nthrows, const char *file, const char *name,
 	int *nbins, double *x_min, double *x_max) {
 
 	char str[1024];
@@ -991,7 +1025,11 @@ TH1D **Unfold::create_pdfs(TH1D **prior, int nthrows, const char *file, const ch
 	bool delete_x = false;
 	TH1D **pdf = 0;
 
+	double *ntemp = new double [ nr ];
+	for(i=0;i<nt;++i) ntemp[i] = bias_removal ? (n[i] - 1.0) : n[i];
+
 	if(x_min == 0 && x_max == 0 && nbins == 0) {
+
 		x_min = new double [ nt ];
 		x_max = new double [ nt ];
 		nbins = new int [ nt ];
@@ -1001,7 +1039,7 @@ TH1D **Unfold::create_pdfs(TH1D **prior, int nthrows, const char *file, const ch
 		for(i=0;i<nt;++i) { x_min[i] = 9999999.0; x_max[i] = -9999999.0; }
 		for(i=0;i<nt;++i) { nbins[i] = 250; }
 
-		pdf = create_pdfs(n, nr);
+		pdf = create_mu_pdfs(ntemp, false); /* we either already subtracted 1 from measured spectrum, or don't want to */
 
 	/* use MLE to estimate the boundaries */
 		int imle, nmles = 1000000;
@@ -1023,29 +1061,30 @@ TH1D **Unfold::create_pdfs(TH1D **prior, int nthrows, const char *file, const ch
 			}
 		}
 
-		for(i=0;i<nt;++i) printf("from likelihood consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
-
-		for(i=0;i<nt;++i) {
-			double a_min = prior[i]->GetXaxis()->GetXmin();
-			if(a_min < x_min[i]) x_min[i] = a_min;
-			double a_max = prior[i]->GetXaxis()->GetXmax();
-			if(a_max > x_max[i]) x_max[i] = a_max;
-
-			if(x_min[i] <= 0.0) x_min[i] = 0.01; /* jsv TODO figure if configurable. stay away from 0? */
-
-		}
-
-		for(i=0;i<nt;++i) printf("after priors consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
-
-	/* clean up */
+	/* clean up. no longer using the n-based pdfs */
 		for(i=0;i<nr;++i) delete pdf[i];
 		delete [] pdf;
+
+		for(i=0;i<nt;++i) printf("from likelihood consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
+
+		if(prior) {
+			for(i=0;i<nt;++i) {
+				double a_min = prior[i]->GetXaxis()->GetXmin();
+				if(a_min < x_min[i]) x_min[i] = a_min;
+				double a_max = prior[i]->GetXaxis()->GetXmax();
+				if(a_max > x_max[i]) x_max[i] = a_max;
+
+				if(x_min[i] <= 0.0) x_min[i] = 0.01; /* jsv TODO figure if configurable. stay away from 0? */
+			}
+			for(i=0;i<nt;++i) printf("after priors consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
+		}
 	}
 
 	pdf = new TH1D * [ nr ];
 
+/* just to normalize the Poisson weights */
 	double *prior_prob = new double [ nr ];
-	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], n[j]); 
+	for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(ntemp[j], ntemp[j]); 
 
 /* create the pdfs but don't fill them yet */
 	for(i=0;i<nt;++i) {
@@ -1065,17 +1104,20 @@ TH1D **Unfold::create_pdfs(TH1D **prior, int nthrows, const char *file, const ch
 // for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
 		double weight0 = 1.0;
 		for(j=0;j<nr;++j) {
-			double t = TMath::Poisson(n[j], mu[j]) / prior_prob[j];
+			double t = TMath::Poisson(ntemp[j], mu[j]) / prior_prob[j];
 			weight0 = weight0 * t;
 		}
 
-		for(i=0;i<nt;++i) {
-			int bin = prior[i]->FindBin(theta[i]);
-			double weight = prior[i]->GetBinContent(bin);
-			pdf[i]->Fill(theta[i], weight * weight0);
+		if(prior) {
+			for(i=0;i<nt;++i) {
+				int bin = prior[i]->FindBin(theta[i]);
+				double weight = prior[i]->GetBinContent(bin);
+				pdf[i]->Fill(theta[i], weight * weight0);
+			}
 		}
 	}
 
+	delete [] ntemp;
 	delete [] mu;
 	delete [] theta;
 	if(delete_x) { /* we allocated the space */
@@ -1326,6 +1368,7 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	double *sumx2 = new double [ nt ];
 	double *atemp = 0, *btemp = 0, *ctemp = 0, *cov = 0, *J = 0; 
 	double **R_save = 0, **Rinv_save = 0, *Rtemp = 0;
+	char str[1024];
 	if(dR_options != ResponseMatrixVariationNone) {
 		R_save = R;
 		Rinv_save = Rinv;
@@ -1372,15 +1415,23 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	tree->Branch("status", &status, "status/I");
 	tree->Branch("dim", &nr, "dim/I");
 	tree->Branch("dim2", &dim2, "dim2/I");
-	tree->Branch("n", ntemp, "n[dim]/D");
-	tree->Branch("y", ytemp, "y[dim]/D");
+	sprintf(str, "n[%d]/D", nr);
+	tree->Branch("n", ntemp, str);
+	sprintf(str, "y[%d]/D", nr);
+	tree->Branch("y", ytemp, str);
 	if(detail) {
-		tree->Branch("a", atemp, "a[dim]/D");
-		tree->Branch("b", btemp, "b[dim]/D");
-		tree->Branch("c", ctemp, "c[dim2]/D");
-		tree->Branch("R", Rtemp, "R[dim2]/D");
-		tree->Branch("cov", cov, "cov[dim2]/D");
-		tree->Branch("J", J, "J[dim2]/D");
+		sprintf(str, "A[%d]/D", nr);
+		tree->Branch("A", atemp, str);
+		sprintf(str, "B[%d]/D", nr);
+		tree->Branch("B", btemp, "B[dim]/D");
+		sprintf(str, "C[%d]/D", nr * nr);
+		tree->Branch("C", ctemp, str);
+		sprintf(str, "R[%d]/D", nt * nr);
+		tree->Branch("R", Rtemp, str);
+		sprintf(str, "cov[%d]/D", nt * nr);
+		tree->Branch("cov", cov, str);
+		sprintf(str, "J[%d]/D", nt * nr);
+		tree->Branch("J", J, str);
 /* jsv TODO save Rinv too */
 	}
 
@@ -1690,6 +1741,11 @@ printf("MEAS: UF=%s. OV=%s\n", meas_uf ? "true" : "false", meas_ov ? "true" : "f
 
 #endif
 
+#if 1
+/* jsv slated for deletion */
+/* this particular version might have issues because the candidates are drawn only from the
+ * values allowed by the prior. The likelihood function could favor candidates outside the
+ * values specified in the prior histograms, but those would not be counted */ 
 bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail, TH1D **prior) {
 	int i, j, k, trial;
 	int counter = counter0;
@@ -1869,7 +1925,10 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 
 }
 
+#endif
+
 /* unified */
+/* jsv. apparently n is not required in this function. remove from input argument list? */
 bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file) {
 	int i, j, k, trial;
 	int counter = counter0;
@@ -1879,6 +1938,9 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	double *vcand = new double [ nt ];
 	double *vsave = new double [ nt ];
 	double *A = 0, *B = 0, *C = 0;
+
+/* if we want to save the value internally, then y = 0 must be specified */
+	double *ydest = (y == 0) ? this->y : y;
 
 	int status = Intermediate;
 
@@ -1911,24 +1973,25 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i*nt+j] = 0.0; } 
 	bool converge = false;
 	trials = -1; /* nothing good has happened yet */
-	for(trial=0;trial<max_trials;++trial) {
+	for(trial=0;trial<max_trials;) { /* trial is incremented inside loop */
 
 		if(progress_report_frequency && ((trial % progress_report_frequency) == 0)) {
 			printf("%d pass. %d total\n", trial, max_trials);
 		}
 
-	/* draw random solution from the PDFs */
-		for(i=0;i<nt;++i) { theta[i] = pdf[i]->GetRandom(); }
+	/* draw random but positive-definite solution from the PDFs */
+		for(i=0;i<nt;++i) while((theta[i] = pdf[i]->GetRandom()) <= 0.0);
+
 		for(i=0;i<nt;++i) { v[i] += theta[i]; }
 		++trial;
 
 		if(detail) {
-			for(i=0;i<nr;++i) {
+			for(i=0;i<nt;++i) {
 				double s = theta[i];
 				double t = TMath::Log(s);
-				A[i] = s; /* not incrementing += s */ 
+				A[i] = s; /* not incrementing += s */
 				B[i] = t; /* not incrementing += t */
-				for(j=0;j<nr;++j) C[j * nt + i] = theta[j] * t; /* not incrementing */
+				for(j=0;j<nt;++j) C[j * nt + i] = theta[j] * t; /* not incrementing */
 			}
 		}
 
@@ -1939,24 +2002,26 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 			if(!converge) vcand[j] = v[j] / trial; 
 		}; 
 
-		converge = true; /* assume convergence */
-		for(j=0;j<nr;++j) {
-			double v_old = vsave[j];
-			double v_new = vcand[j];
-			double v_ave = 0.5 * (v_new + v_old);
-			if(fabs(v_old - v_new) > epsilon * v_ave) { 
-				converge = false; /* no convergence yet */
-				counter = counter0; /* reset counter */
-				break; /* no need to continue after decision about no convergence */
-			}
-		}; 
+		if(require_convergence) {
+			converge = true; /* assume convergence */
+			for(j=0;j<nr;++j) {
+				double v_old = vsave[j];
+				double v_new = vcand[j];
+				double v_ave = 0.5 * (v_new + v_old);
+				if(fabs(v_old - v_new) > epsilon * v_ave) { 
+					converge = false; /* no convergence yet */
+					counter = counter0; /* reset counter */
+					break; /* no need to continue after decision about no convergence */
+				}
+			}; 
 
-		if(require_convergence && converge) {
-			--counter; /* count down */
-			if(counter == 0) { /* enough successive trials have converged */ 
-				if(verbose) printf("convergence criteria reached with %d trials!\n", trial); 
-				for(i=0;i<nt;++i) y[i] = vcand[i]; 
-				break;
+			if(converge) {
+				--counter; /* count down */
+				if(counter == 0) { /* enough successive trials have converged */ 
+					if(verbose) printf("convergence criteria reached with %d trials!\n", trial); 
+					for(i=0;i<nt;++i) ydest[i] = vcand[i]; 
+					break;
+				}
 			}
 		}
 
@@ -1986,13 +2051,20 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 
 }
 
+/* jsv. TODO remove this next function. it's duplicate in functionality */
 bool Unfold::error_analysis(int ntrials, const char *file) {
 	int i, j, k, trial, throws, status;
 	bool detail = false;
 	double *y_input = new double [ nt ];
-	double *y_temp = new double [ nt ];
 	double *mu = new double [ nr ];
 	double weight;
+	char str[1024];
+
+	double *ytemp = new double [ nt ];
+	double *ntemp = new double [ nr ];
+
+	bool bias_removal = true;
+	for(i=0;i<nt;++i) ntemp[i] = bias_removal ? (n[i] - 1.0) : n[i];
 
 /* for normalizing the Poisson weights */
 	double *prior_mean = new double [ nt ];
@@ -2000,17 +2072,19 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	else prior_mean[i] = 0.0;
 	double *prior_prob = new double [ nr ];
 	calculate_response(prior_mean, mu);
-	if(prior) for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(n[j], mu[j]); 
+	if(prior) for(j=0;j<nr;++j) prior_prob[j] = TMath::Poisson(ntemp[j], mu[j]); 
 	else prior_prob[i] = 0.0;
 // for(i=0;i<nt;++i) printf("prior %d has mean %f and prob = %f\n", i, prior_mean[i], prior_prob[i]);
 
 /* initialize the ntuple with basic information */
 	TFile *fp = new TFile(file, "update");
 	TTree *tree = new TTree("solution_info", "solution_info");
-	tree->Branch("dim", &nt, "dim/I");
-	tree->Branch("y", y, "y[dim]/D"); /* central value */
-	tree->Branch("n", n, "n[dim]/D"); /* the data */
-	tree->Branch("mu", mu, "mu[dim]/D");
+	sprintf(str, "y[%d]/D", nt);
+	tree->Branch("y", y, str); /* central value */
+	sprintf(str, "n[%d]/D", nt);
+	tree->Branch("n", n, str); /* the data */
+	sprintf(str, "mu[%d]/D", nt);
+	tree->Branch("mu", mu, str);
 	tree->Branch("prior_mean", prior_mean, "prior_mean[dim]/D");
 	tree->Branch("prior_prob", prior_prob, "prior_prob[dim]/D");
 
@@ -2031,14 +2105,14 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	tree->Branch("status", &status, "status/I");
 	tree->Branch("dim", &nt, "dim/I");
 	tree->Branch("y_input", y_input, "y_input[dim]/D");
-	tree->Branch("y", y_temp, "y[dim]/D");
+	tree->Branch("y", ytemp, "y[dim]/D");
 
 	if(prior) {
 		for(trial=0;trial<ntrials;++trial) {
 			if(trial && ((trial % 1000000) == 0)) printf("%d/%d processed\n", trial, ntrials);
 			for(k=0;k<max_trials;++k) {
-				for(i=0;i<nt;++i) { y_temp[i] = y_input[i] = prior[i]->GetRandom(); }
-				calculate_response(y_temp, mu);
+				for(i=0;i<nt;++i) { ytemp[i] = y_input[i] = prior[i]->GetRandom(); }
+				calculate_response(ytemp, mu);
 // for(i=0;i<nt;++i) printf("input: y(%d) = %f. mu = %f\n", i, y_input[i], mu[i]);
 				weight = 1.0;
 				for(j=0;j<nr;++j) {
@@ -2046,7 +2120,7 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 					weight = weight * t;
 				}
 // printf("weight = %f\n", weight);
-				bool flag = get_maximum_likelihood_solution(y_temp, mu);
+				bool flag = get_maximum_likelihood_solution(ytemp, mu);
 				if(flag) break; /* found positive-definite solution */ 
 			}
 /* jsv. TODO this should always have just k = 1. the "flag" doesn't ever fail */
@@ -2055,15 +2129,15 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 			tree->Fill();
 		}
 	} else {
-		TH1D **pdf = create_pdfs(n, nr);
+		TH1D **pdf = create_mu_pdfs(true); /* subtract 1 from n */
 		for(trial=0;trial<ntrials;++trial) {
 			if(trial && ((trial % 1000000) == 0)) printf("%d/%d processed\n", trial, ntrials);
 			for(k=0;k<max_trials;++k) {
 				for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from PDF */
-				bool flag = get_maximum_likelihood_solution(y_temp, mu); /* y_temp = mu X Rinv */
+				bool flag = get_maximum_likelihood_solution(ytemp, mu); /* ytemp = mu X Rinv */
 				if(flag) break; /* found positive-definite solution */ 
 			}
-// for(i=0;i<nt;++i) printf("y(%d) = %f. mu = %f\n", i, y_temp[i], mu[i]);
+// for(i=0;i<nt;++i) printf("y(%d) = %f. mu = %f\n", i, ytemp[i], mu[i]);
 			throws = k;
 			status = (k == max_trials) ? 0 : 1;
 			tree->Fill();
@@ -2080,7 +2154,7 @@ bool Unfold::error_analysis(int ntrials, const char *file) {
 	delete fp;
 
 	delete [] mu;
-	delete [] y_temp;
+	delete [] ytemp;
 	delete [] y_input;
 	delete [] prior_mean;
 	delete [] prior_prob;

@@ -64,7 +64,7 @@ class Unfold {
 	bool miss(double xtrue);
 	bool save(const char *filename, int mode = 0);
 	bool add_response_matrix(const char *file, const char *name, double weight = 1.0);
-	bool set_prior(TH1D **prior);
+	// bool set_prior(TH1D **prior);
 	// bool initialize_response_matrix(const char *file, const char *name, double weight = 1.0);
 	bool initialize_response_matrix(const char *file);
 	bool run(double *y, double *n, int option = 0, bool detail = false);
@@ -78,9 +78,11 @@ class Unfold {
 	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file);
 	// bool get_weighted_likelihood_solution(double *y, double *n, bool detail, double *prior_mean, double *prior_width);
 	bool get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess);
-	TH1D **create_pdfs(double *n, int nr);
-	TH1D **create_pdfs(TH1D **prior = 0, int nthrows = 2000000000, const char *file = 0, const char *name = 0,
-		int *nbins = 0, double *x_min = 0, double *x_max = 0); 
+	// TH1D **create_pdfs(double *n, int nr);
+	TH1D **create_mu_pdfs(bool bias_removal, double *n = 0, const char *file = 0,
+		const char *name = 0, int *nbins = 0, double *x_min = 0, double *x_max = 0);
+	TH1D **create_theta_pdfs(bool bias_removal, TH1D **prior = 0, int nthrows = 2000000000, const char *file = 0, 
+		const char *name = 0, int *nbins = 0, double *x_min = 0, double *x_max = 0); 
 	// TH1D **create_pdfs(double **Rinv, TH1D **pdf0, int nr);
 	// bool get_maximum_likelihood_solution(double *y);
 	bool get_maximum_likelihood_solution(double *y = 0, double *n = 0);
