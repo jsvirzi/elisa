@@ -1930,8 +1930,8 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 
 /* unified */
 /* jsv. apparently n is not required in this function. remove from input argument list? */
-bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file) {
-	int i, j, k, trial;
+bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file, int nthrows) {
+	int i, j, k, ithrow;
 	int counter = counter0;
 	char str[1024];
 	double *theta = new double [ nt ];
@@ -1949,7 +1949,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	TTree *tree = 0;
 
 /* initialize the ntuple */
-	if(file) {
+	if(file && strlen(file)) {
 		fp = new TFile(file, "update");
 		tree = new TTree("solution", "solution");
 		tree->Branch("status", &status, "status/I");
@@ -1974,17 +1974,17 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	for(i=0;i<nr;++i) { A[i] = B[i] = 0.0; for(j=0;j<nr;++j) C[i*nt+j] = 0.0; } 
 	bool converge = false;
 	trials = -1; /* nothing good has happened yet */
-	for(trial=0;trial<max_trials;) { /* trial is incremented inside loop */
+	for(ithrow=0;ithrow<nthrows;) { /* ithrow is incremented inside loop */
 
-		if(progress_report_frequency && ((trial % progress_report_frequency) == 0)) {
-			printf("%d pass. %d total\n", trial, max_trials);
+		if(progress_report_frequency && ((ithrow % progress_report_frequency) == 0)) {
+			printf("%d pass. %d total\n", ithrow, nthrows);
 		}
 
 	/* draw random but positive-definite solution from the PDFs */
 		for(i=0;i<nt;++i) while((theta[i] = pdf[i]->GetRandom()) <= 0.0);
 
 		for(i=0;i<nt;++i) { v[i] += theta[i]; }
-		++trial;
+		++ithrow;
 
 		if(detail) {
 			for(i=0;i<nt;++i) {
@@ -2000,7 +2000,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 
 		for(j=0;j<nr;++j) {
 			vsave[j] = vcand[j]; /* save previous state */
-			if(!converge) vcand[j] = v[j] / trial; 
+			if(!converge) vcand[j] = v[j] / ithrow; 
 		}; 
 
 		if(require_convergence) {
@@ -2019,7 +2019,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 			if(converge) {
 				--counter; /* count down */
 				if(counter == 0) { /* enough successive trials have converged */ 
-					if(verbose) printf("convergence criteria reached with %d trials!\n", trial); 
+					if(verbose) printf("convergence criteria reached with %d throws!\n", ithrow); 
 					for(i=0;i<nt;++i) ydest[i] = vcand[i]; 
 					break;
 				}
@@ -2046,9 +2046,9 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 	if(B) delete [] B;
 	if(C) delete [] C;
 
-	trials = trial; /* return the number of trials required for convergence */
+	trials = ithrow; /* return the number of trials required for convergence */
 
-	return converge && (trials < max_trials);
+	return converge && (ithrow < nthrows);
 
 }
 
