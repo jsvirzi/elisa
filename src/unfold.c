@@ -1271,14 +1271,9 @@ bool Unfold::get_maximum_likelihood_solution(double *y, double *n) {
 
 bool Unfold::statistical_analysis(int ntrials, int option, const char *file, bool detail, int dR_options, double dR_nominal) {
 	bool stat = false;
-	if(option == UseUnfolded) {
-		double *y_temp = new double [ nt ]; /* need to buffer y because it is modified by the algorithm */
-		for(int i=0;i<nt;++i) y_temp[i] = y[i];
-		stat = statistical_analysis(y_temp, ntrials, file, detail, dR_options, dR_nominal);
-		delete [] y_temp;
-	} else if(option == UseTruth) {
-		stat = statistical_analysis(y_true, ntrials, file, detail, dR_options, dR_nominal);
-	}
+	double *ytemp = new double [ nt ]; /* need to buffer y because it is modified by the algorithm */
+	for(int i=0;i<nt;++i) ytemp[i] = (option == UseUnfolded) ? y[i] : y_true[i];
+	stat = statistical_analysis(ytemp, ntrials, file, detail, dR_options, dR_nominal);
 	return stat;
 }
 
@@ -1359,15 +1354,13 @@ bool Unfold::calculate_response(double *y, double *mu, double **R) {
 	}
 }
 
+/* y0 is the input used for deriving Poisson extractions */
 bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, bool detail, int dR_options, double dR_nominal) {
-	int i, j, k, trial, status, throws, dim2;
+	int i, j, k, trial, status, throws;
 	double *mu = new double [ nr ];
 	double *ntemp = new double [ nr ];
 	double *ytemp = new double [ nt ];
-	double *sumx0 = new double [ nt ];
-	double *sumx1 = new double [ nt ];
-	double *sumx2 = new double [ nt ];
-	double *atemp = 0, *btemp = 0, *ctemp = 0, *cov = 0, *J = 0; 
+	double *atemp = 0, *btemp = 0, *ctemp = 0; // jsv , *cov = 0, *J = 0; 
 	double **R_save = 0, **Rinv_save = 0, *Rtemp = 0;
 	char str[1024];
 	if(dR_options != ResponseMatrixVariationNone) {
@@ -1393,20 +1386,19 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	if(detail) {
 		int size = nt;
 		atemp = new double [ size ];
-		bzero(atemp, sizeof(double) * size);
+		memset(atemp, 0, sizeof(double) * size);
 		btemp = new double [ size ];
-		bzero(btemp, sizeof(double) * size);
+		memset(btemp, 0, sizeof(double) * size);
 		size = nt * nr; /* used as contiguous array */
 		ctemp = new double [ size ];
-		bzero(ctemp, sizeof(double) * size);
-		cov = new double [ size ];
-		bzero(cov, sizeof(double) * size);
-		J = new double [ size ];
-		bzero(J, sizeof(double) * size);
+		memset(ctemp, 0, sizeof(double) * size);
+		// cov = new double [ size ];
+		// memset(cov, 0, sizeof(double) * size);
+		// J = new double [ size ];
+		// memset(J, 0, sizeof(double) * size);
 		Rtemp = new double [ size ];
-		bzero(Rtemp, sizeof(double) * size);
+		memset(Rtemp, 0, sizeof(double) * size);
 	}
-	dim2 = nt * nr;
 
 	write_basic_info(file);
 
@@ -1414,8 +1406,6 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	TTree *tree = new TTree("extraction", "extraction");
 	tree->Branch("throws", &throws, "throws/I");
 	tree->Branch("status", &status, "status/I");
-	tree->Branch("dim", &nr, "dim/I");
-	tree->Branch("dim2", &dim2, "dim2/I");
 	sprintf(str, "n[%d]/D", nr);
 	tree->Branch("n", ntemp, str);
 	sprintf(str, "y[%d]/D", nr);
@@ -1424,16 +1414,16 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 		sprintf(str, "A[%d]/D", nr);
 		tree->Branch("A", atemp, str);
 		sprintf(str, "B[%d]/D", nr);
-		tree->Branch("B", btemp, "B[dim]/D");
+		tree->Branch("B", btemp, str);
 		sprintf(str, "C[%d]/D", nr * nr);
 		tree->Branch("C", ctemp, str);
-		sprintf(str, "R[%d]/D", nt * nr);
-		tree->Branch("R", Rtemp, str);
-		sprintf(str, "cov[%d]/D", nt * nr);
-		tree->Branch("cov", cov, str);
-		sprintf(str, "J[%d]/D", nt * nr);
-		tree->Branch("J", J, str);
-/* jsv TODO save Rinv too */
+		// sprintf(str, "R[%d]/D", nt * nr);
+		// tree->Branch("R", Rtemp, str);
+		// sprintf(str, "cov[%d]/D", nt * nr);
+		// tree->Branch("cov", cov, str);
+		// sprintf(str, "J[%d]/D", nt * nr);
+		// tree->Branch("J", J, str);
+	/* jsv TODO save Rinv too */
 	}
 
 /* put away the central value. use status = 0 */
@@ -1526,9 +1516,6 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	delete [] mu;
 	delete [] ntemp;
 	delete [] ytemp;
-	delete [] sumx0;
-	delete [] sumx1;
-	delete [] sumx2;
 
 }
 
