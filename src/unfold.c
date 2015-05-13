@@ -682,7 +682,9 @@ bool Unfold::run(int option, bool detail) {
 		stat = get_maximum_likelihood_solution(y, n);
 	} else if(algorithm == Elisa) {
 		double *ntemp = new double [ nr ];
-		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
+		// for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
+		for(int i=0;i<nt;++i) ntemp[i] = n[i]; /* jsv. keep track WHO subtracts 1 */
+		for(int i=0;i<nt;++i) ntemp[i] = n[i] - 1.0; /* jsv. keep track WHO subtracts 1 */
 		stat = get_weighted_likelihood_solution(y, ntemp, detail);
 		delete [] ntemp;
 	}
@@ -954,10 +956,13 @@ TH1D **Unfold::create_mu_pdfs(bool bias_removal, double *n, const char *file, co
 
 	if(n == 0) n = this->n;
 
+	if(name == 0) name = "pdf_bin";
+
 	double *ntemp = new double [ nr ];
 	for(i=0;i<nt;++i) ntemp[i] = bias_removal ? (n[i] - 1.0) : n[i];
 
 	if(x_min == 0 && x_max == 0 && nbins == 0) {
+		printf("compute default limits for mu-space pdf\n");
 		delete_x = true;
 		x_min = new double [ nr ];
 		x_max = new double [ nr ];
@@ -973,10 +978,10 @@ TH1D **Unfold::create_mu_pdfs(bool bias_removal, double *n, const char *file, co
 
 	TH1D **pdf = new TH1D * [ nr ];
 	for(i=0;i<nr;++i) {
-		sprintf(s, "%s%d", i, name);
+		// printf("i=%d. nbins=%d x = (%f, %f, %f)\n", i, nbins[i], n[i], x_min[i], x_max[i]); 
+		sprintf(s, "%s%d", name, i);
 		pdf[i] = new TH1D(s, "PDF", nbins[i], x_min[i], x_max[i]); 
 		pdf[i]->SetDirectory(0);
-		// printf("i=%d. x = (%f, %f, %f)\n", i, n[i], x_min[i], x_max[i]); 
 		acc = 0.0;
 		double *a = new double [ nbins[i] ]; 
 		for(j=0;j<nbins[i];++j) {
@@ -1023,10 +1028,12 @@ TH1D **Unfold::create_theta_pdfs(bool bias_removal, TH1D **prior, int nthrows, c
 	double x, acc, width;
 	double *mu = new double [ nr ], *theta = new double [ nt ];
 	bool delete_x = false;
-	TH1D **pdf = 0;
 
 	double *ntemp = new double [ nr ];
 	for(i=0;i<nt;++i) ntemp[i] = bias_removal ? (n[i] - 1.0) : n[i];
+
+/* false = we either already subtracted 1 from measured spectrum, or don't want to */
+	TH1D **mu_pdf = create_mu_pdfs(ntemp, false); 
 
 	if(x_min == 0 && x_max == 0 && nbins == 0) {
 
@@ -1035,12 +1042,28 @@ TH1D **Unfold::create_theta_pdfs(bool bias_removal, TH1D **prior, int nthrows, c
 		nbins = new int [ nt ];
 		delete_x = true;
 
-	/* initialize min/max to absurd values. nbins to a reasonable value */
-		for(i=0;i<nt;++i) { x_min[i] = 9999999.0; x_max[i] = -9999999.0; }
-		for(i=0;i<nt;++i) { nbins[i] = 250; }
+	/* initialize min/max/nbins to reasonable values */
+		for(i=0;i<nt;++i) {
+			x_min[i] = mu_pdf[i]->GetXaxis()->GetXmin(); 
+			x_max[i] = mu_pdf[i]->GetXaxis()->GetXmax(); 
+			nbins[i] = 250;
+		}
 
-		pdf = create_mu_pdfs(ntemp, false); /* we either already subtracted 1 from measured spectrum, or don't want to */
+	/* if we have theta priors, use them to "stretch" the boundaries in mu space */
+		if(prior) {
+			int imle, nmles = 100000000;
+			for(imle=0;imle<nmles;++imle) {
+				if(imle && ((imle % 1000000) == 0)) printf("MLE: %d/%d processed\n", imle, nmles);
+				for(i=0;i<nt;++i) theta[i] = prior[i]->GetRandom();
+				calculate_response(theta, mu);
+				for(i=0;i<nt;++i) {
+					if(mu[i] < x_min[i]) x_min[i] = mu[i];
+					if(mu[i] > x_max[i]) x_max[i] = mu[i];
+				}
+			}
+		}
 
+#if 0
 	/* use MLE to estimate the boundaries */
 		int imle, nmles = 1000000;
 		for(imle=0;imle<nmles;++imle) {
@@ -1049,7 +1072,7 @@ TH1D **Unfold::create_theta_pdfs(bool bias_removal, TH1D **prior, int nthrows, c
 			bool flag = false;
 			for(itrial=0;itrial<ntrials;++itrial) {
 				if(itrial && ((itrial % 1000000) == 0)) printf("MLE %d => %d/%d processed\n", imle, itrial, ntrials);
-				for(i=0;i<nr;++i) { mu[i] = pdf[i]->GetRandom(); } /* draw random mu from PDF */
+				for(i=0;i<nr;++i) { mu[i] = mu_pdf[i]->GetRandom(); } /* draw random mu from PDF */
 				flag = get_maximum_likelihood_solution(theta, mu); /* y_temp = mu X Rinv */
 				if(flag) break; /* found positive-definite solution */ 
 			}
@@ -1060,10 +1083,7 @@ TH1D **Unfold::create_theta_pdfs(bool bias_removal, TH1D **prior, int nthrows, c
 				if(theta[i] > x_max[i]) x_max[i] = theta[i];
 			}
 		}
-
-	/* clean up. no longer using the n-based pdfs */
-		for(i=0;i<nr;++i) delete pdf[i];
-		delete [] pdf;
+#endif
 
 		for(i=0;i<nt;++i) printf("from likelihood consideration x(%d) = [%f, %f]\n", i, x_min[i], x_max[i]); 
 
@@ -1080,7 +1100,11 @@ TH1D **Unfold::create_theta_pdfs(bool bias_removal, TH1D **prior, int nthrows, c
 		}
 	}
 
-	pdf = new TH1D * [ nr ];
+/* clean up. no longer using the n-based pdfs */
+	for(i=0;i<nr;++i) delete mu_pdf[i];
+	delete [] mu_pdf;
+
+	TH1D **pdf = new TH1D * [ nr ];
 
 /* just to normalize the Poisson weights */
 	double *prior_prob = new double [ nr ];
@@ -1363,6 +1387,7 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	double *atemp = 0, *btemp = 0, *ctemp = 0; // jsv , *cov = 0, *J = 0; 
 	double **R_save = 0, **Rinv_save = 0, *Rtemp = 0;
 	char str[1024];
+	printf("running statistical analysis module\n");
 	if(dR_options != ResponseMatrixVariationNone) {
 		R_save = R;
 		Rinv_save = Rinv;
@@ -1480,8 +1505,8 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 		throws = this->trials; /* get the number of times dice was thrown to obtain convergence */
 		if(detail) {
 			for(i=k=0;i<nr;++i) { for(j=0;j<nr;++j) { ctemp[k++] = C[i][j]; } }
-			for(i=k=0;i<nr;++i) { for(j=0;j<nr;++j) { cov[k++] = this->cov[i][j]; } } /* jsv where is this used? */
-			for(i=k=0;i<nr;++i) { for(j=0;j<nr;++j) { J[k++] = this->J[i][j]; } }
+			// for(i=k=0;i<nr;++i) { for(j=0;j<nr;++j) { cov[k++] = this->cov[i][j]; } } /* jsv where is this used? */
+			// for(i=k=0;i<nr;++i) { for(j=0;j<nr;++j) { J[k++] = this->J[i][j]; } }
 			for(i=0;i<nr;++i) { atemp[i] = A[i]; btemp[i] = B[i]; } 
 		}
 		tree->Fill();
