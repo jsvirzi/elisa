@@ -32,9 +32,9 @@ int main(int argc, char **argv) {
 
 	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname, efile, ifile,
 		pdf_ofile, pdf_oname;
-	int algorithm = -1, nstat = 0, seed = 0, max_trials = 0, iterations = 5, option = 0, nerrm = 0;
+	int algorithm = -1, nstat = 0, seed = 0, nthrows = 0, iterations = 5, option = 0, nerrm = 0;
 	int pdf_throws = 0;
-	double epsilon = 0.001;
+	double epsilon = 0.001, xfac = 1.0;
 	bool covariance = false, bootstrap = false, truth = false, use_prior = false, use_pdf = false,
 		save_intermediate = false, create_pdfs = false, limits_known = false, expert = false;
 
@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
 			pdf_ofile = argv[++i]; 
 			pdf_oname = argv[++i];
 			create_pdfs = true; 
-		} else if(strcmp("-trials", argv[i]) == 0) { max_trials = atoi(argv[++i]); 
+		} else if(strcmp("-throws", argv[i]) == 0) { nthrows = atoi(argv[++i]); 
 		} else if(strcmp("-error_analysis", argv[i]) == 0) { 
 			nerrm= atoi(argv[++i]); /* number of pseudo-experiments */
 			efile = argv[++i]; /* output file for pseudo-experiments */
@@ -74,6 +74,7 @@ int main(int argc, char **argv) {
 			nstat = atoi(argv[++i]); /* number of pseudo-experiments */
 			sfile = argv[++i]; /* output file for pseudo-experiments */
 		} else if(strcmp("-seed", argv[i]) == 0) { seed = atoi(argv[++i]); 
+		} else if(strcmp("-xfac", argv[i]) == 0) { xfac = atof(argv[++i]); 
 		} else if(strcmp("-option", argv[i]) == 0) { option = atoi(argv[++i]); 
 		} else if(strcmp("-iterations", argv[i]) == 0) { iterations = atoi(argv[++i]); 
 		} else if(strcmp("-algorithm", argv[i]) == 0) { algorithm = atoi(argv[++i]); 
@@ -83,7 +84,7 @@ int main(int argc, char **argv) {
 		} else if(strcmp("-covariance", argv[i]) == 0) { covariance = true;
 		} else if(strcmp("-epsilon", argv[i]) == 0) { epsilon = atof(argv[++i]); 
 		} else if(strcmp("-convergence", argv[i]) == 0) { 
-			max_trials = atoi(argv[++i]); 
+			nthrows = atoi(argv[++i]); 
 			epsilon = atof(argv[++i]); 
 		} else { printf("unrecognized argument [%s]\n", argv[i]); exit(1); 
 		}
@@ -91,6 +92,7 @@ int main(int argc, char **argv) {
 
 	printf("unfolding [%s]\n", dname.c_str());
 	printf("convergence criteria = %f\n", epsilon);
+	printf("using XFAC = %f\n", xfac); /* jsv. get rid of this */
 
 	if(use_pdf && use_prior) {
 		printf("conflicting options chosen. pdf = true and prior = true\n");
@@ -149,8 +151,8 @@ int main(int argc, char **argv) {
 			x_max = new double [ NBINS ];
 			nbins = new int [ NBINS];
 			for(i=0;i<NBINS;++i) {
-				x_min[i] = pdf_info[i].x_min;
-				x_max[i] = pdf_info[i].x_max;
+				x_min[i] = xfac * pdf_info[i].x_min;
+				x_max[i] = xfac * pdf_info[i].x_max;
 				nbins[i] = pdf_info[i].nbins;
 				printf("LIMIT(%d) = %d [%f, %f]\n", i, nbins[i], x_min[i], x_max[i]);
 			}
@@ -162,6 +164,7 @@ int main(int argc, char **argv) {
 
 	TH1D **pdf = 0;
 	if(use_pdf) {
+		printf("using pdfs with name = [%s] from file [%s]\n", pname.c_str(), pfile.c_str());
 		char *str = new char [ pname.length() + 32 ];
 		TFile fp(pfile.c_str(), "read");
 		pdf= new TH1D * [ nt ];
@@ -175,16 +178,20 @@ int main(int argc, char **argv) {
 	}
 
 	if(expert) {
-		double *ntemp = new double [ nr ];
+		printf("running in expert mode\n");
 		double *ytemp = new double [ nt ];
-		for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
+		double *ntemp = 0;
+		// double *ntemp = new double [ nr ]; /* maybe not needed when using pdf */
+		// for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
 		bool detail = true; /* want A, B and C */
 		bool require_convergence = false; /* we will do our own compilation later */
-		printf("running in expert mode\n");
-		unfold->get_weighted_likelihood_solution(ytemp, ntemp, detail, require_convergence, pdf, ofile.c_str());
-		delete [] ntemp;
+		printf("running in expert mode. require_convergence = %s. %d throws. output file = [%s]\n", 
+			require_convergence ? "true" : "false", nthrows, ofile.c_str());
+		unfold->get_weighted_likelihood_solution(ytemp, ntemp, detail, require_convergence, pdf, ofile.c_str(), nthrows);
+		// delete [] ntemp;
 		delete [] ytemp;
 	} else {
+		printf("running in naive mode\n");
 		unfold->run(option);
 	}
 
@@ -204,7 +211,7 @@ int main(int argc, char **argv) {
 	}
 
 	if(nstat) {
-		printf("evaluating statistical uncertainty with %d trials. saving to %s\n", max_trials, sfile.c_str());
+		printf("evaluating statistical uncertainty with %d throws. saving to %s\n", nthrows, sfile.c_str());
 		int source = truth ? Unfold::UseTruth : Unfold::UseUnfolded;
 		printf("using %s for statistical analysis\n", truth ? "truth" : "unfolded");
 		unfold->statistical_analysis(nstat, source, sfile.c_str(), covariance);

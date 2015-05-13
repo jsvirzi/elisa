@@ -75,7 +75,7 @@ class Unfold {
 	// jsv clashes with other run() bool run(double *prior_mean, double *prior_width, int option = 0, bool detail = false);
 	bool get_weighted_likelihood_solution(double *y, double *n, bool detail);
 	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, TH1D **prior);
-	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file);
+	bool get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file, int max_trials);
 	// bool get_weighted_likelihood_solution(double *y, double *n, bool detail, double *prior_mean, double *prior_width);
 	bool get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess);
 	// TH1D **create_pdfs(double *n, int nr);
