@@ -672,6 +672,8 @@ double *Unfold::make_guess(int option) {
  * output:
  * 	y is unfolded result
  */
+
+#if 0
 bool Unfold::run(int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
@@ -682,17 +684,13 @@ bool Unfold::run(int option, bool detail) {
 		stat = get_maximum_likelihood_solution(y, n);
 	} else if(algorithm == Elisa) {
 		double *ntemp = new double [ nr ];
-		// for(int i=0;i<nt;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
-		for(int i=0;i<nt;++i) ntemp[i] = n[i]; /* jsv. keep track WHO subtracts 1 */
-		for(int i=0;i<nt;++i) ntemp[i] = n[i] - 1.0; /* jsv. keep track WHO subtracts 1 */
+		for(int i=0;i<nr;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
 		stat = get_weighted_likelihood_solution(y, ntemp, detail);
 		delete [] ntemp;
 	}
 	return stat;
 }
-
-#if 1
-/* jsv. slated for deletion */
+#endif
 
 bool Unfold::run(double *y, double *n, int option, bool detail) {
 	bool stat = false;
@@ -703,15 +701,16 @@ bool Unfold::run(double *y, double *n, int option, bool detail) {
 	} else if(algorithm == MaximumLikelihood) {
 		stat = get_maximum_likelihood_solution(y, n);
 	} else if(algorithm == Elisa) {
-		double *ntemp = new double [ nr ];
-		for(int i=0;i<nr;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
-		if(prior == 0) stat = get_weighted_likelihood_solution(y, ntemp, detail);
-		else stat = get_weighted_likelihood_solution(y, ntemp, detail, prior);
-		delete [] ntemp;
+		if(prior == 0) stat = get_weighted_likelihood_solution(y, n, detail);
+		else stat = get_weighted_likelihood_solution(y, n, detail, prior);
+		// double *ntemp = new double [ nr ];
+		// for(int i=0;i<nr;++i) ntemp[i] = (n[i] > 1.0) ? (n[i] - 1.0) : 0.0;
+		// if(prior == 0) stat = get_weighted_likelihood_solution(y, ntemp, detail);
+		// else stat = get_weighted_likelihood_solution(y, ntemp, detail, prior);
+		// delete [] ntemp;
 	}
 	return stat;
 }
-#endif
 
 bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, double *guess) {
 
@@ -786,6 +785,10 @@ bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, d
 
 }
 
+/*
+ * input: n = measured data
+ * detail: true/false whether to save detailed information to calculate covariance matrices, etc.
+ */
 bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail) {
 	int i, j, k, trial;
 	int counter = counter0;
@@ -795,13 +798,18 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 	double *ncand = new double [ nr ];
 	double *nsave = new double [ nr ];
 
+	printf("JSV jsv what we want\n");
+
 /* initialize the ntuple */
 	int status = Intermediate;
 	TTree *tree = 0;
 	TFile *fp = 0;
-	bool save_intermediate = intermediate_results_file.length() ? true : false;
+	// jsv bool save_intermediate = intermediate_results_file.length() ? true : false;
+	bool save_intermediate = false;
 
 	trials = -1; /* nothing good has happened yet */
+
+	if(y == 0) y = this->y;
 
 	TH1D **pdf = create_mu_pdfs(true, n); /* subtract 1 */
 
@@ -872,6 +880,7 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 			if(counter == 0) { /* enough successive trials have converged */ 
 				printf("convergence criteria reached with %d trials!\n", trial); 
 				get_maximum_likelihood_solution(y, ncand);
+				printf("convergence criteria reached with %d trials!\n", trial); 
 				if(detail) {
 				/* jsv. is assumption about the y-convergence valid for A, B and C? */
 					for(j=0;j<nr;++j) { A[j] = A[j] / a; }
@@ -892,43 +901,6 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail)
 		fp->Close();
 		delete fp;
 	}
-
-#if 0
-	printf("J = \n");
-	for(i=0;i<nr;++i) {
-		for(j=0;j<nr;++j) {
-			printf("%5.3f ", J[i][j]);
-		}
-		printf("\n");
-	}
-
-	for(i=0;i<nr;++i) {
-		for(j=0;j<nr;++j) {
-			cov[i][j] = 0.0;
-			for(int k=0;k<nr;++k) {
-				for(int m=0;m<nr;++m) {
-					cov[i][j] += icov[k][m] * J[i][k] * J[j][m];
-				}
-			}
-		}
-	}
-
-	printf("INPUT COVARIANCE = \n");
-	for(i=0;i<nr;++i) {
-		for(j=0;j<nr;++j) {
-			printf("%5.3f ", icov[i][j]);
-		}
-		printf("\n");
-	}
-
-	printf("OUTPUT COVARIANCE = \n");
-	for(i=0;i<nr;++i) {
-		for(j=0;j<nr;++j) {
-			printf("%5.3f ", cov[i][j]);
-		}
-		printf("\n");
-	}
-#endif
 
 	delete [] mu;
 	delete [] v;
@@ -1940,8 +1912,13 @@ bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail,
 
 #endif
 
+/*
+ * this version draws candidates, from the pdf, in the theta-domain
+ */
+
 /* unified */
 /* jsv. apparently n is not required in this function. remove from input argument list? */
+/* jsv. where is n weighting happenning? */
 bool Unfold::get_weighted_likelihood_solution(double *y, double *n, bool detail, bool require_convergence, TH1D **pdf, const char *file, int nthrows) {
 	int i, j, k, ithrow;
 	int counter = counter0;
