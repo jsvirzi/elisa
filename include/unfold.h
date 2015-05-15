@@ -67,10 +67,10 @@ class Unfold {
 	// bool set_prior(TH1D **prior);
 	// bool initialize_response_matrix(const char *file, const char *name, double weight = 1.0);
 	bool initialize_response_matrix(const char *file);
-	bool run(double *y, double *n, int option = 0, bool detail = false);
-	bool run(double *y, double *n, TH1D **prior, int option = 0, bool detail = false);
-	bool run(double *y, double *n, double *prior_mean, double *prior_width, int option = 0, bool detail = false);
-	bool run(int option = 0, bool detail = false);
+	bool run(double *y = 0, double *n = 0, int option = 0, bool detail = false);
+//	bool run(double *y, double *n, TH1D **prior, int option = 0, bool detail = false);
+//	bool run(double *y, double *n, double *prior_mean, double *prior_width, int option = 0, bool detail = false);
+//	bool run(int option = 0, bool detail = false);
 	// bool run(TH1D **prior = 0, int option = 0, bool detail = false);
 	// jsv clashes with other run() bool run(double *prior_mean, double *prior_width, int option = 0, bool detail = false);
 	bool get_weighted_likelihood_solution(double *y, double *n, bool detail);
