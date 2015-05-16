@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
 	std::string name, dfile, dname, rfile, tfile, tname, ofile, sfile, pfile, pname, efile, ifile,
 		pdf_ofile, pdf_oname;
 	int algorithm = -1, nstat = 0, seed = 0, nthrows = 0, iterations = 5, option = 0, nerrm = 0;
-	int pdf_throws = 0;
+	int pdf_throws = 0, format = Unfold::Binary;
 	double epsilon = 0.001, xfac = 1.0;
 	bool covariance = false, bootstrap = false, truth = false, use_prior = false, use_pdf = false,
 		save_intermediate = false, create_pdfs = false, limits_known = false, expert = false;
@@ -56,8 +56,12 @@ int main(int argc, char **argv) {
 		} else if(strcmp("-verbose", argv[i]) == 0) { verbose = true;
 		} else if(strcmp("-expert", argv[i]) == 0) { expert = true;
 		} else if(strcmp("-r", argv[i]) == 0) { rfile = argv[++i]; /* response matrix */
-		} else if(strcmp("-meas", argv[i]) == 0) { dfile = argv[++i]; dname = argv[++i]; /* the data */
-		} else if(strcmp("-true", argv[i]) == 0) { tfile = argv[++i]; tname = argv[++i]; truth = true; 
+		} else if(strcmp("-meas", argv[i]) == 0) { 
+			if(format == Unfold::Root) { dfile = argv[++i]; dname = argv[++i]; } /* the data */
+			else if(format == Unfold::Binary) { dfile = argv[++i]; } /* the data */
+		} else if(strcmp("-true", argv[i]) == 0) { 
+			if(format == Unfold::Root) { tfile = argv[++i]; tname = argv[++i]; truth = true; }
+			else if(format == Unfold::Binary) { tfile = argv[++i]; truth = true; }
 		} else if(strcmp("-save_intermediate", argv[i]) == 0) { ifile = argv[++i]; save_intermediate = true; 
 		} else if(strcmp("-prior", argv[i]) == 0) { pfile = argv[++i]; pname = argv[++i]; use_prior = true; 
 		} else if(strcmp("-pdf", argv[i]) == 0) { pfile = argv[++i]; pname = argv[++i]; use_pdf = true; 
@@ -66,6 +70,7 @@ int main(int argc, char **argv) {
 			pdf_ofile = argv[++i]; 
 			pdf_oname = argv[++i];
 			create_pdfs = true; 
+		} else if(strcmp("-format", argv[i]) == 0) { format = atoi(argv[++i]); 
 		} else if(strcmp("-throws", argv[i]) == 0) { nthrows = atoi(argv[++i]); 
 		} else if(strcmp("-error_analysis", argv[i]) == 0) { 
 			nerrm= atoi(argv[++i]); /* number of pseudo-experiments */
@@ -109,17 +114,24 @@ int main(int argc, char **argv) {
 		unfold->set_progress_report_frequency(10000); /* avoid excessive output to screen */
 	} else if(algorithm == Unfold::Elisa) {
 		// unfold->set_progress_report_frequency(10000); /* avoid excessive output to screen */
-		unfold->save_intermediate(save_intermediate, ifile.c_str());
+		unfold->save_intermediate(save_intermediate, ifile.c_str()); /* jsv get rid of this */
 	}
 	if(seed) {
 		unfold->set_seed(seed);
 		printf("seed = %d\n", seed);
 	}
 	unfold->initialize_response_matrix(rfile.c_str());
-	unfold->set_meas(dfile.c_str(), dname.c_str());
+	if(format == Unfold::Root) {
+		unfold->set_meas(dfile.c_str(), dname.c_str());
+	} else if(format == Unfold::Binary) {
+		unfold->set_meas(dfile.c_str());
+	}
 	int i, j, k, nt = unfold->get_n_true(), nr = unfold->get_n_meas();
 	if(bootstrap) unfold->bootstrap(); /* create new sample bootstrapped from input sample */
-	if(tname.length()) unfold->set_true(tfile.c_str(), tname.c_str());
+	if(tname.length()) {
+		if(format == Unfold::Root) unfold->set_true(tfile.c_str(), tname.c_str());
+		else if(format == Unfold::Binary) unfold->set_true(tfile.c_str());
+	}
 	double *n = unfold->get_meas();
 	double *ytrue = unfold->get_true();
 	for(i=0;i<nr;++i) { printf("MEAS(%d) = %f. TRUE = %f\n", i, n[i], ytrue[i]); }
@@ -192,7 +204,7 @@ int main(int argc, char **argv) {
 		delete [] ytemp;
 	} else {
 		printf("running in naive mode\n");
-		unfold->run(option);
+		unfold->run();
 	}
 
 	double *y = unfold->get_solution();

@@ -531,6 +531,36 @@ double *Unfold::get_meas() {
 	return n;
 }
 
+bool Unfold::set_meas(const char *file) {
+	int n_meas;
+	bool stat = false;
+	FILE *fp = fopen(file, "r");
+	printf("opening file [%s]\n", file);
+	if(fp == NULL) { printf("error opening file [%s]\n", file); return false; }
+	fread(&n_meas, 1, sizeof(int), fp);
+	if(n_meas == nr) {
+		fread(n, nr, sizeof(double), fp);
+		stat = true;
+	}
+	fclose(fp);
+	return stat;
+}
+
+bool Unfold::set_true(const char *file) {
+	int n_true;
+	bool stat = false;
+	FILE *fp = fopen(file, "r");
+	printf("opening file [%s]\n", file);
+	if(fp == NULL) { printf("error opening file [%s]\n", file); return false; }
+	fread(&n_true, 1, sizeof(int), fp);
+	if(n_true == nt) {
+		fread(y_true, nt, sizeof(double), fp);
+		stat = true;
+	}
+	fclose(fp);
+	return stat;
+}
+
 bool Unfold::set_meas(double *n, int N) {
 	if(this->N != N) return false;
 	for(int i=0;i<nr;++i) this->n[i] = n[i];
@@ -695,9 +725,12 @@ bool Unfold::run(int option, bool detail) {
 bool Unfold::run(double *y, double *n, int option, bool detail) {
 	bool stat = false;
 	if(algorithm == BayesianIteration) {
+printf("allinama\n");
 		double *guess = make_guess(option); 
+printf("oalala\n");
 		stat = get_bayesian_iterative_solution(y, n, iterations, guess);
 		if(guess) delete [] guess;
+printf("omamama\n");
 	} else if(algorithm == MaximumLikelihood) {
 		stat = get_maximum_likelihood_solution(y, n);
 	} else if(algorithm == Elisa) {
@@ -718,8 +751,17 @@ bool Unfold::get_bayesian_iterative_solution(double *y, double *n, int niters, d
 	double *eff = new double [ nt ];
 	get_efficiency(eff);
 
+printf("Y=%x\n", y);
+
+	if(y == 0) y = this->y;
+	if(n == 0) n = this->n;
+
+printf("Y=%x\n", y);
+
 	if(guess) { for(i=0;i<nt;++i) y[i] = guess[i]; } 
 	else { for(i=0;i<nt;++i) y[i] = 1.0; }
+
+printf("Y was %x\n", y);
 
 	if(guess && verbose) { 
 		printf("initial distribution for bayesian iteration = ...\n");
@@ -1252,6 +1294,7 @@ bool Unfold::get_maximum_likelihood_solution(double *y) {
 bool Unfold::get_maximum_likelihood_solution(double *y, double *n) { 
 	bool flag = true;
 	trials = 1; /* number of tries is always 1 for MLE. here for consistency with other methods */
+	if(y == 0) y = this->y;
 	if(n == 0) n = this->n;
 /* this is written as if nr could be different than nt, but nr = nt is required. 
 	written this way for transparency */
@@ -1441,6 +1484,8 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 
 	calculate_response(y0, mu); /* working value of mu */
 
+printf("boo 1 %d\n", ntrials);
+
 /* check for validity of "input" data. it must be at least 1, definitely not 0 */
 	bool valid = false;
 	while(!valid) {
@@ -1455,6 +1500,9 @@ bool Unfold::statistical_analysis(double *y0, int ntrials, const char *file, boo
 	}
 
 	for(trial=0;trial<ntrials;++trial) {
+
+printf("trial %d / %d\n", trial, ntrials);
+
 		if(progress_report_frequency && ((trial % progress_report_frequency) == 0))
 			printf("trial %d / %d\n", trial, ntrials);
 

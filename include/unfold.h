@@ -45,6 +45,14 @@ class Unfold {
 		ResponseMatrixVariationUniform
 	} ResponseMatrixVariationOptions;
 
+/* file formats */
+	enum {
+		Binary = 0,
+		Text,
+		Root,
+		NFormats
+	};
+
 	void set_seed(int seed) { this->seed = seed; rndm->SetSeed(seed); gRandom->SetSeed(seed); };
 	int get_seed() { return seed; };
 	// void set_dimension(int N) { this->N = N; };
@@ -54,10 +62,12 @@ class Unfold {
 	bool set_true(TH2D *h);
 	bool set_true(TH3D *h);
 	bool set_true(const char *file, const char *name);
+	bool set_true(const char *file);
 	bool set_meas(TH1D *h);
 	bool set_meas(TH2D *h);
 	bool set_meas(TH3D *h);
 	bool set_meas(const char *file, const char *name);
+	bool set_meas(const char *file);
 	bool invert_matrix(double **M, int n = 0);
 	bool initialize();
 	bool fill(double xtrue, double xmeas);
